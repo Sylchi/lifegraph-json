@@ -1,13 +1,16 @@
 # Changelog
 
+## 0.1.7 - 2026-04-01
+
+Primitive comparison parity release.
+
+### Added
+- `PartialEq` parity for strings, booleans, integers, and floats against `Value`
+- support for patterns like `assert_eq!(value["x"], 1)`
+
 ## 0.1.6 - 2026-04-01
 
 Value parity refinement release.
-
-### Added
-- `Value::sort_all_objects`
-- `as_array` signature aligned to return `&Vec<Value>`-style access
-- `as_object` signature aligned to return `&Map`-style access
 
 ## 0.1.5 - 2026-04-01
 

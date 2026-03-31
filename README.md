@@ -95,3 +95,15 @@ Best observed outliers so far include roughly:
 - **~3x faster** on indexed repeated lookup over wide objects
 
 This crate is best viewed as a **performance-oriented JSON toolkit for specific workloads**, with a growing compatibility layer for easier adoption.
+
+## More drop-in behavior
+
+Common `serde_json`-style assertions now work too:
+
+```rust
+# use lifegraph_json::json;
+let value = json!({"x": 1, "ok": true, "msg": "hi"});
+assert_eq!(value["x"], 1);
+assert_eq!(value["ok"], true);
+assert_eq!(value["msg"], "hi");
+```
