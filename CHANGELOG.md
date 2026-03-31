@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.15 - 2026-04-01
+
+Benchmark-and-positioning release.
+
+### Added
+- normalized benchmark results against the `serde-rs/json-benchmark` corpus
+- clearer README positioning around zero-dependency usage versus serde-driven workflows
+- stronger migration guidance for `serde_json`-style `Value` usage
+
 ## 0.1.14 - 2026-04-01
 
 Parser regression coverage release.

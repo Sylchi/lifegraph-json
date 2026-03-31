@@ -1,9 +1,9 @@
 [package]
 name = "lifegraph-json"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 license = "MIT"
-description = "Dependency-light JSON toolkit with owned, borrowed, tape, and compiled-schema fast paths"
+description = "Zero-dependency JSON crate with owned, borrowed, tape, and compiled-schema fast paths"
 readme = "README.md"
 documentation = "https://docs.rs/lifegraph-json"
 repository = "https://github.com/Sylchi/lifegraph-json"
