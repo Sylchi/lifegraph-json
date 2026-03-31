@@ -1,13 +1,19 @@
 # Changelog
 
+## 0.1.10 - 2026-04-01
+
+Real serde_json example compatibility release.
+
+### Added
+- a batch of ported serde_json doc/example tests for `Value` and `Number`
+- compatibility fixes driven by those examples
+
+### Fixed
+- positive signed integer semantics now better match serde_json `Number` behavior
+
 ## 0.1.9 - 2026-04-01
 
 Number parity refinement release.
-
-### Added
-- `JsonNumber::{from_i128,from_u128,as_i128,as_u128}`
-- `Display` for `JsonNumber`
-- broader large-integer compatibility helpers
 
 ## 0.1.8 - 2026-04-01
 

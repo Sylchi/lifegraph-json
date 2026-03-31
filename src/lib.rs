@@ -28,7 +28,11 @@ impl JsonNumber {
     }
 
     pub fn is_i64(&self) -> bool {
-        matches!(self, Self::I64(_))
+        match self {
+            Self::I64(_) => true,
+            Self::U64(value) => *value <= i64::MAX as u64,
+            Self::F64(_) => false,
+        }
     }
 
     pub fn is_u64(&self) -> bool {
@@ -248,6 +252,24 @@ impl fmt::Display for JsonNumber {
         }
     }
 }
+
+
+impl From<i64> for JsonNumber {
+    fn from(value: i64) -> Self {
+        if value >= 0 {
+            Self::U64(value as u64)
+        } else {
+            Self::I64(value)
+        }
+    }
+}
+
+impl From<u64> for JsonNumber {
+    fn from(value: u64) -> Self {
+        Self::U64(value)
+    }
+}
+
 
 impl std::error::Error for JsonError {}
 impl std::error::Error for JsonParseError {}
@@ -673,31 +695,31 @@ impl From<&str> for JsonValue {
 
 impl From<i8> for JsonValue {
     fn from(value: i8) -> Self {
-        Self::Number(JsonNumber::I64(value as i64))
+        Self::Number(JsonNumber::from(value as i64))
     }
 }
 
 impl From<i16> for JsonValue {
     fn from(value: i16) -> Self {
-        Self::Number(JsonNumber::I64(value as i64))
+        Self::Number(JsonNumber::from(value as i64))
     }
 }
 
 impl From<i32> for JsonValue {
     fn from(value: i32) -> Self {
-        Self::Number(JsonNumber::I64(value as i64))
+        Self::Number(JsonNumber::from(value as i64))
     }
 }
 
 impl From<i64> for JsonValue {
     fn from(value: i64) -> Self {
-        Self::Number(JsonNumber::I64(value))
+        Self::Number(JsonNumber::from(value))
     }
 }
 
 impl From<isize> for JsonValue {
     fn from(value: isize) -> Self {
-        Self::Number(JsonNumber::I64(value as i64))
+        Self::Number(JsonNumber::from(value as i64))
     }
 }
 
@@ -2774,6 +2796,16 @@ mod tests {
     }
 
         #[test]
+    fn positive_signed_integer_construction_matches_serde_style() {
+        let value = JsonValue::from(64i64);
+        assert!(value.is_i64());
+        assert!(value.is_u64());
+        assert_eq!(value.as_i64(), Some(64));
+        assert_eq!(value.as_u64(), Some(64));
+        assert_eq!(value.as_number(), Some(&JsonNumber::from(64i64)));
+    }
+
+    #[test]
     fn json_number_parity_helpers_work() {
         let n = JsonNumber::from_i128(42).unwrap();
         assert!(n.is_i64() || n.is_u64());
@@ -2838,7 +2870,7 @@ mod tests {
     fn number_and_mut_index_parity_helpers_work() {
         let int = JsonValue::from(7i64);
         assert!(int.is_i64());
-        assert!(!int.is_u64());
+        assert!(int.is_u64());
         assert!(!int.is_f64());
         assert_eq!(int.as_number().and_then(JsonNumber::as_i64), Some(7));
 
@@ -2854,6 +2886,126 @@ mod tests {
         value["arr"] = json!([1, 2, 3]);
         value["arr"][1] = JsonValue::from(9u64);
         assert_eq!(value.pointer("/arr/1").and_then(JsonValue::as_u64), Some(9));
+    }
+
+    #[test]
+    fn serde_value_doc_examples_get_and_index_work() {
+        let object = json!({"A": 65, "B": 66, "C": 67});
+        assert_eq!(*object.get("A").unwrap(), json!(65));
+
+        let array = json!(["A", "B", "C"]);
+        assert_eq!(*array.get(2).unwrap(), json!("C"));
+        assert_eq!(array.get("A"), None);
+
+        let object = json!({"A": ["a", "á", "à"], "B": ["b", "b́"], "C": ["c", "ć", "ć̣", "ḉ"]});
+        assert_eq!(object["B"][0], json!("b"));
+        assert_eq!(object["D"], json!(null));
+        assert_eq!(object[0]["x"]["y"]["z"], json!(null));
+    }
+
+    #[test]
+    fn serde_value_doc_examples_type_queries_work() {
+        let obj = json!({ "a": { "nested": true }, "b": ["an", "array"] });
+        assert!(obj.is_object());
+        assert!(obj["a"].is_object());
+        assert!(!obj["b"].is_object());
+        assert!(obj["b"].is_array());
+        assert!(!obj["a"].is_array());
+
+        let v = json!({ "a": "some string", "b": false });
+        assert!(v["a"].is_string());
+        assert!(!v["b"].is_string());
+
+        let v = json!({ "a": 1, "b": "2" });
+        assert!(v["a"].is_number());
+        assert!(!v["b"].is_number());
+
+        let v = json!({ "a": false, "b": "false" });
+        assert!(v["a"].is_boolean());
+        assert!(!v["b"].is_boolean());
+
+        let v = json!({ "a": null, "b": false });
+        assert!(v["a"].is_null());
+        assert!(!v["b"].is_null());
+    }
+
+    #[test]
+    fn serde_value_doc_examples_accessors_work() {
+        let v = json!({ "a": { "nested": true }, "b": ["an", "array"] });
+        assert_eq!(v["a"].as_object().unwrap().len(), 1);
+        assert_eq!(v["b"].as_array().unwrap().len(), 2);
+        assert_eq!(v["b"].as_object(), None);
+
+        let v = json!({ "a": "some string", "b": false });
+        assert_eq!(v["a"].as_str(), Some("some string"));
+        assert_eq!(v["b"].as_str(), None);
+
+        let v = json!({ "a": 1, "b": 2.2, "c": -3, "d": "4" });
+        assert_eq!(v["a"].as_number(), Some(&JsonNumber::from(1u64)));
+        assert_eq!(v["b"].as_number(), Some(&JsonNumber::from_f64(2.2).unwrap()));
+        assert_eq!(v["c"].as_number(), Some(&JsonNumber::from(-3i64)));
+        assert_eq!(v["d"].as_number(), None);
+    }
+
+    #[test]
+    fn serde_value_doc_examples_numeric_queries_work() {
+        let big = i64::MAX as u64 + 10;
+        let v = json!({ "a": 64, "b": big, "c": 256.0 });
+        assert!(v["a"].is_i64());
+        assert!(!v["b"].is_i64());
+        assert!(!v["c"].is_i64());
+        assert_eq!(v["a"].as_i64(), Some(64));
+        assert_eq!(v["b"].as_i64(), None);
+        assert_eq!(v["c"].as_i64(), None);
+
+        let v = json!({ "a": 64, "b": -64, "c": 256.0 });
+        assert!(v["a"].is_u64());
+        assert!(!v["b"].is_u64());
+        assert!(!v["c"].is_u64());
+        assert_eq!(v["a"].as_u64(), Some(64));
+        assert_eq!(v["b"].as_u64(), None);
+        assert_eq!(v["c"].as_u64(), None);
+
+        let v = json!({ "a": 256.0, "b": 64, "c": -64 });
+        assert!(v["a"].is_f64());
+        assert!(!v["b"].is_f64());
+        assert!(!v["c"].is_f64());
+        assert_eq!(v["a"].as_f64(), Some(256.0));
+        assert_eq!(v["b"].as_f64(), Some(64.0));
+        assert_eq!(v["c"].as_f64(), Some(-64.0));
+    }
+
+    #[test]
+    fn serde_value_doc_examples_pointer_and_take_work() {
+        let data = json!({
+            "x": {
+                "y": ["z", "zz"]
+            }
+        });
+        assert_eq!(data.pointer("/x/y/1").unwrap(), &json!("zz"));
+        assert_eq!(data.pointer("/a/b/c"), None);
+
+        let mut value = json!({"x": 1.0, "y": 2.0});
+        assert_eq!(value.pointer("/x"), Some(&JsonValue::from(1.0)));
+        if let Some(v) = value.pointer_mut("/x") {
+            *v = 1.5.into();
+        }
+        assert_eq!(value.pointer("/x"), Some(&JsonValue::from(1.5)));
+        let old_x = value.pointer_mut("/x").map(JsonValue::take).unwrap();
+        assert_eq!(old_x, JsonValue::from(1.5));
+        assert_eq!(value.pointer("/x").unwrap(), &JsonValue::Null);
+
+        let mut v = json!({"x": "y"});
+        assert_eq!(v["x"].take(), json!("y"));
+        assert_eq!(v, json!({"x": null}));
+    }
+
+    #[test]
+    fn serde_number_doc_examples_work() {
+        assert!(JsonNumber::from_f64(256.0).is_some());
+        assert!(JsonNumber::from_f64(f64::NAN).is_none());
+        assert!(JsonNumber::from_i128(256).is_some());
+        assert!(JsonNumber::from_u128(256).is_some());
     }
 
     #[test]
