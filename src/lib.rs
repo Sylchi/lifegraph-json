@@ -3145,6 +3145,23 @@ mod tests {
     }
 
     #[test]
+    fn serde_pure_json_parse_examples_work() {
+        assert_eq!(from_str("null").unwrap(), json!(null));
+        assert_eq!(from_str(" true ").unwrap(), json!(true));
+        assert_eq!(from_str(" false ").unwrap(), json!(false));
+        assert_eq!(from_str(r#""foo""#).unwrap(), json!("foo"));
+        assert_eq!(from_str(r#""\uD83C\uDF95""#).unwrap(), json!("🎕"));
+        assert_eq!(from_str("[]").unwrap(), json!([]));
+        assert_eq!(from_str("[1, [2, 3]]").unwrap(), json!([1, [2, 3]]));
+        assert_eq!(from_str("{}").unwrap(), json!({}));
+        assert_eq!(from_str(r#"{"a": {"b": 3, "c": 4}}"#).unwrap(), json!({"a": {"b": 3, "c": 4}}));
+
+        let neg_zero = from_str("-0.0").unwrap();
+        let parsed = neg_zero.as_f64().unwrap();
+        assert!(parsed.is_sign_negative());
+    }
+
+    #[test]
     fn serde_number_doc_examples_work() {
         assert!(JsonNumber::from_f64(256.0).is_some());
         assert!(JsonNumber::from_f64(f64::NAN).is_none());

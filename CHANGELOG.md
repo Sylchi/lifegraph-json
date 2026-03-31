@@ -1,12 +1,16 @@
 # Changelog
 
+## 0.1.13 - 2026-04-01
+
+Pure JSON parse compatibility release.
+
+### Added
+- more serde_json-derived pure parse tests for null/bool/string/list/object cases
+- negative-zero parse coverage
+
 ## 0.1.12 - 2026-04-01
 
 Map ergonomics refinement release.
-
-### Added
-- `Map::{get,get_mut,contains_key,insert,remove,append,retain,values,values_mut,iter,iter_mut}`
-- more serde_json-style map tests
 
 ## 0.1.11 - 2026-04-01
 
