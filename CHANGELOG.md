@@ -1,13 +1,17 @@
 # Changelog
 
+## 0.1.9 - 2026-04-01
+
+Number parity refinement release.
+
+### Added
+- `JsonNumber::{from_i128,from_u128,as_i128,as_u128}`
+- `Display` for `JsonNumber`
+- broader large-integer compatibility helpers
+
 ## 0.1.8 - 2026-04-01
 
 `json!` macro parity upgrade.
-
-### Added
-- TT-muncher based `json!` implementation closer to `serde_json`
-- expression-key object support like `features[0]: features[1]`
-- better array/object literal handling and trailing-comma behavior
 
 ## 0.1.7 - 2026-04-01
 

@@ -13,6 +13,20 @@ pub enum JsonNumber {
 
 
 impl JsonNumber {
+    pub fn from_i128(value: i128) -> Option<Self> {
+        if let Ok(value) = u64::try_from(value) {
+            Some(Self::U64(value))
+        } else if let Ok(value) = i64::try_from(value) {
+            Some(Self::I64(value))
+        } else {
+            None
+        }
+    }
+
+    pub fn from_u128(value: u128) -> Option<Self> {
+        u64::try_from(value).ok().map(Self::U64)
+    }
+
     pub fn is_i64(&self) -> bool {
         matches!(self, Self::I64(_))
     }
@@ -33,10 +47,26 @@ impl JsonNumber {
         }
     }
 
+    pub fn as_i128(&self) -> Option<i128> {
+        match self {
+            Self::I64(value) => Some(*value as i128),
+            Self::U64(value) => Some(*value as i128),
+            Self::F64(_) => None,
+        }
+    }
+
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Self::I64(value) => (*value >= 0).then_some(*value as u64),
             Self::U64(value) => Some(*value),
+            Self::F64(_) => None,
+        }
+    }
+
+    pub fn as_u128(&self) -> Option<u128> {
+        match self {
+            Self::I64(value) => (*value >= 0).then_some(*value as u128),
+            Self::U64(value) => Some(*value as u128),
             Self::F64(_) => None,
         }
     }
@@ -205,6 +235,16 @@ impl fmt::Display for JsonParseError {
             Self::ExpectedCommaOrEnd { index, context } => {
                 write!(f, "expected ',' or end of {context} at byte {index}")
             }
+        }
+    }
+}
+
+impl fmt::Display for JsonNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::I64(value) => write!(f, "{value}"),
+            Self::U64(value) => write!(f, "{value}"),
+            Self::F64(value) => write!(f, "{value}"),
         }
     }
 }
@@ -700,6 +740,22 @@ impl From<f32> for JsonValue {
 impl From<f64> for JsonValue {
     fn from(value: f64) -> Self {
         Self::Number(JsonNumber::F64(value))
+    }
+}
+
+impl From<i128> for JsonValue {
+    fn from(value: i128) -> Self {
+        JsonNumber::from_i128(value)
+            .map(Self::Number)
+            .unwrap_or_else(|| Self::String(value.to_string()))
+    }
+}
+
+impl From<u128> for JsonValue {
+    fn from(value: u128) -> Self {
+        JsonNumber::from_u128(value)
+            .map(Self::Number)
+            .unwrap_or_else(|| Self::String(value.to_string()))
     }
 }
 
@@ -2718,6 +2774,19 @@ mod tests {
     }
 
         #[test]
+    fn json_number_parity_helpers_work() {
+        let n = JsonNumber::from_i128(42).unwrap();
+        assert!(n.is_i64() || n.is_u64());
+        assert_eq!(n.as_i128(), Some(42));
+        assert_eq!(n.as_u128(), Some(42));
+        assert_eq!(n.to_string(), "42");
+
+        let big = JsonNumber::from_u128(u64::MAX as u128 + 1);
+        assert!(big.is_none());
+        assert!(JsonNumber::from_f64(f64::NAN).is_none());
+    }
+
+    #[test]
     fn json_macro_expr_key_parity_works() {
         let code = 200;
         let features = vec!["serde", "json"];
