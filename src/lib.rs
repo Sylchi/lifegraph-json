@@ -345,6 +345,54 @@ impl JsonValue {
             _ => None,
         }
     }
+
+    pub fn take(&mut self) -> JsonValue {
+        std::mem::replace(self, JsonValue::Null)
+    }
+
+    pub fn pointer(&self, pointer: &str) -> Option<&JsonValue> {
+        if pointer.is_empty() {
+            return Some(self);
+        }
+        if !pointer.starts_with('/') {
+            return None;
+        }
+        let mut current = self;
+        for segment in pointer.split('/').skip(1) {
+            let token = decode_pointer_segment(segment);
+            current = match current {
+                JsonValue::Object(entries) => entries
+                    .iter()
+                    .find(|(key, _)| key == &token)
+                    .map(|(_, value)| value)?,
+                JsonValue::Array(values) => values.get(token.parse::<usize>().ok()?)?,
+                _ => return None,
+            };
+        }
+        Some(current)
+    }
+
+    pub fn pointer_mut(&mut self, pointer: &str) -> Option<&mut JsonValue> {
+        if pointer.is_empty() {
+            return Some(self);
+        }
+        if !pointer.starts_with('/') {
+            return None;
+        }
+        let mut current = self;
+        for segment in pointer.split('/').skip(1) {
+            let token = decode_pointer_segment(segment);
+            current = match current {
+                JsonValue::Object(entries) => entries
+                    .iter_mut()
+                    .find(|(key, _)| key == &token)
+                    .map(|(_, value)| value)?,
+                JsonValue::Array(values) => values.get_mut(token.parse::<usize>().ok()?)?,
+                _ => return None,
+            };
+        }
+        Some(current)
+    }
 }
 
 impl<'a> BorrowedJsonValue<'a> {
@@ -703,6 +751,23 @@ pub fn to_writer<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonE
     writer.write_all(&bytes).map_err(|_| JsonError::Io)
 }
 
+pub fn to_string_pretty(value: &JsonValue) -> Result<String, JsonError> {
+    let mut out = Vec::with_capacity(initial_json_capacity(value) + 16);
+    write_json_value_pretty(&mut out, value, 0)?;
+    Ok(unsafe { String::from_utf8_unchecked(out) })
+}
+
+pub fn to_vec_pretty(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
+    let mut out = Vec::with_capacity(initial_json_capacity(value) + 16);
+    write_json_value_pretty(&mut out, value, 0)?;
+    Ok(out)
+}
+
+pub fn to_writer_pretty<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonError> {
+    let bytes = to_vec_pretty(value)?;
+    writer.write_all(&bytes).map_err(|_| JsonError::Io)
+}
+
 impl JsonTape {
     pub fn root<'a>(&'a self, input: &'a str) -> Option<TapeValue<'a>> {
         (!self.tokens.is_empty()).then_some(TapeValue {
@@ -948,6 +1013,82 @@ macro_rules! json {
     ($other:expr) => {
         $crate::JsonValue::from($other)
     };
+}
+
+fn decode_pointer_segment(segment: &str) -> String {
+    let mut out = String::with_capacity(segment.len());
+    let bytes = segment.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'~' && i + 1 < bytes.len() {
+            match bytes[i + 1] {
+                b'0' => {
+                    out.push('~');
+                    i += 2;
+                    continue;
+                }
+                b'1' => {
+                    out.push('/');
+                    i += 2;
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn write_indent(out: &mut Vec<u8>, depth: usize) {
+    for _ in 0..depth {
+        out.extend_from_slice(b"  ");
+    }
+}
+
+fn write_json_value_pretty(out: &mut Vec<u8>, value: &JsonValue, depth: usize) -> Result<(), JsonError> {
+    match value {
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {
+            write_json_value(out, value)
+        }
+        JsonValue::Array(values) => {
+            out.push(b'[');
+            if !values.is_empty() {
+                out.push(b'\n');
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        out.extend_from_slice(b",\n");
+                    }
+                    write_indent(out, depth + 1);
+                    write_json_value_pretty(out, value, depth + 1)?;
+                }
+                out.push(b'\n');
+                write_indent(out, depth);
+            }
+            out.push(b']');
+            Ok(())
+        }
+        JsonValue::Object(entries) => {
+            out.push(b'{');
+            if !entries.is_empty() {
+                out.push(b'\n');
+                for (index, (key, value)) in entries.iter().enumerate() {
+                    if index > 0 {
+                        out.extend_from_slice(b",\n");
+                    }
+                    write_indent(out, depth + 1);
+                    write_json_key(out, key);
+                    out.push(b' ');
+                    write_json_value_pretty(out, value, depth + 1)?;
+                }
+                out.push(b'\n');
+                write_indent(out, depth);
+            }
+            out.push(b'}');
+            Ok(())
+        }
+    }
 }
 
 fn hash_key(bytes: &[u8]) -> u64 {
@@ -2132,6 +2273,25 @@ mod tests {
     #[test]
     fn from_slice_rejects_invalid_utf8() {
         assert!(matches!(from_slice(&[0xff]), Err(JsonParseError::InvalidUtf8)));
+    }
+
+    #[test]
+    fn pointer_take_and_pretty_helpers_work() {
+        let mut value = from_str(r#"{"a":{"b":[10,20,{"~key/":"x"}]}}"#).unwrap();
+        assert_eq!(value.pointer("/a/b/1").and_then(JsonValue::as_u64), Some(20));
+        assert_eq!(value.pointer("/a/b/2/~0key~1").and_then(JsonValue::as_str), Some("x"));
+        *value.pointer_mut("/a/b/0").unwrap() = JsonValue::from(99u64);
+        assert_eq!(value.pointer("/a/b/0").and_then(JsonValue::as_u64), Some(99));
+
+        let taken = value.pointer_mut("/a/b/2").unwrap().take();
+        assert!(value.pointer("/a/b/2").unwrap().is_null());
+        assert_eq!(taken["~key/"].as_str(), Some("x"));
+
+        let pretty = to_string_pretty(&value).unwrap();
+        assert!(pretty.contains("\"a\": {"));
+        let mut out = Vec::new();
+        to_writer_pretty(&mut out, &value).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), pretty);
     }
 
     #[test]

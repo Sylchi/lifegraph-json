@@ -28,6 +28,8 @@ It uses **0 runtime dependencies**.
 
 It is **not** fully drop-in compatible with `serde_json` yet, but simple code ports are getting much easier.
 
+Newer compatibility helpers now include JSON Pointer access (`Value::pointer`, `Value::pointer_mut`), `Value::take`, and pretty-print output helpers.
+
 ## Migration sketch
 
 ```rust
