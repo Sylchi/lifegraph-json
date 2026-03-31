@@ -319,9 +319,9 @@ impl JsonValue {
         }
     }
 
-    pub fn as_array(&self) -> Option<&[JsonValue]> {
+    pub fn as_array(&self) -> Option<&Vec<JsonValue>> {
         match self {
-            Self::Array(values) => Some(values.as_slice()),
+            Self::Array(values) => Some(values),
             _ => None,
         }
     }
@@ -333,14 +333,14 @@ impl JsonValue {
         }
     }
 
-    pub fn as_object(&self) -> Option<&[(String, JsonValue)]> {
+    pub fn as_object(&self) -> Option<&Map> {
         match self {
-            Self::Object(entries) => Some(entries.as_slice()),
+            Self::Object(entries) => Some(entries),
             _ => None,
         }
     }
 
-    pub fn as_object_mut(&mut self) -> Option<&mut Vec<(String, JsonValue)>> {
+    pub fn as_object_mut(&mut self) -> Option<&mut Map> {
         match self {
             Self::Object(entries) => Some(entries),
             _ => None,
@@ -445,6 +445,23 @@ impl JsonValue {
             };
         }
         Some(current)
+    }
+
+    pub fn sort_all_objects(&mut self) {
+        match self {
+            JsonValue::Object(entries) => {
+                entries.sort_by(|a, b| a.0.cmp(&b.0));
+                for (_, value) in entries.iter_mut() {
+                    value.sort_all_objects();
+                }
+            }
+            JsonValue::Array(values) => {
+                for value in values.iter_mut() {
+                    value.sort_all_objects();
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -2500,6 +2517,18 @@ mod tests {
         assert_eq!(object["x"].as_u64(), Some(1));
         let array = JsonValue::from_iter([1u64, 2u64, 3u64]);
         assert_eq!(array.get_index(2).and_then(JsonValue::as_u64), Some(3));
+    }
+
+    #[test]
+    fn signature_and_sort_parity_helpers_work() {
+        let mut value = json!({"z": {"b": 2, "a": 1}, "a": [{"d": 4, "c": 3}]});
+        assert_eq!(value.as_object().unwrap().len(), 2);
+        assert_eq!(value["a"].as_array().unwrap().len(), 1);
+        value.sort_all_objects();
+        let root_keys = value.as_object().unwrap().iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>();
+        assert_eq!(root_keys, vec!["a", "z"]);
+        let nested_keys = value["z"].as_object().unwrap().iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>();
+        assert_eq!(nested_keys, vec!["a", "b"]);
     }
 
     #[test]

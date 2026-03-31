@@ -1,12 +1,17 @@
 # Changelog
 
+## 0.1.6 - 2026-04-01
+
+Value parity refinement release.
+
+### Added
+- `Value::sort_all_objects`
+- `as_array` signature aligned to return `&Vec<Value>`-style access
+- `as_object` signature aligned to return `&Map`-style access
+
 ## 0.1.5 - 2026-04-01
 
 Compatibility API sweep.
-
-### Added
-- generic `Value::get` and `Value::get_mut` over string and index types
-- `ValueIndex` trait for compatibility-oriented indexing behavior
 
 ## 0.1.4 - 2026-04-01
 

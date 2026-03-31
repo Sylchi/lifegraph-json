@@ -24,7 +24,7 @@ It uses **0 runtime dependencies**.
 - `value["field"]` and `value[index]`
 - generic `get`, `get_mut`, plus `get_index`, `get_index_mut`
 - `as_str`, `as_bool`, `as_i64`, `as_u64`, `as_f64`
-- `is_null`, `is_array`, `is_object`, `len`, `is_empty`
+- `is_null`, `is_array`, `is_object`, `len`, `is_empty`, `sort_all_objects`
 
 It is **not** fully drop-in compatible with `serde_json` yet, but simple code ports are getting much easier.
 
