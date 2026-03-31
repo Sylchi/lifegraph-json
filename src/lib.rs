@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
+use std::ops::Index;
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonNumber {
@@ -17,6 +19,9 @@ pub enum JsonValue {
     Array(Vec<JsonValue>),
     Object(Vec<(String, JsonValue)>),
 }
+
+pub type Value = JsonValue;
+pub type Number = JsonNumber;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BorrowedJsonValue<'a> {
@@ -106,6 +111,7 @@ pub enum JsonError {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JsonParseError {
+    InvalidUtf8,
     UnexpectedEnd,
     UnexpectedTrailingCharacters(usize),
     UnexpectedCharacter { index: usize, found: char },
@@ -131,6 +137,7 @@ impl fmt::Display for JsonError {
 impl fmt::Display for JsonParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidUtf8 => f.write_str("input is not valid UTF-8"),
             Self::UnexpectedEnd => f.write_str("unexpected end of JSON input"),
             Self::UnexpectedTrailingCharacters(index) => {
                 write!(f, "unexpected trailing characters at byte {index}")
@@ -189,6 +196,111 @@ impl JsonValue {
         match self {
             Self::Array(values) => values.push(value.into()),
             _ => panic!("push_item called on non-array JSON value"),
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        matches!(self, Self::Null)
+    }
+
+    pub fn is_boolean(&self) -> bool {
+        matches!(self, Self::Bool(_))
+    }
+
+    pub fn is_number(&self) -> bool {
+        matches!(self, Self::Number(_))
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, Self::String(_))
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, Self::Array(_))
+    }
+
+    pub fn is_object(&self) -> bool {
+        matches!(self, Self::Object(_))
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Number(JsonNumber::I64(value)) => Some(*value),
+            Self::Number(JsonNumber::U64(value)) => (*value <= i64::MAX as u64).then_some(*value as i64),
+            _ => None,
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::Number(JsonNumber::I64(value)) => (*value >= 0).then_some(*value as u64),
+            Self::Number(JsonNumber::U64(value)) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::Number(JsonNumber::I64(value)) => Some(*value as f64),
+            Self::Number(JsonNumber::U64(value)) => Some(*value as f64),
+            Self::Number(JsonNumber::F64(value)) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn as_array(&self) -> Option<&[JsonValue]> {
+        match self {
+            Self::Array(values) => Some(values.as_slice()),
+            _ => None,
+        }
+    }
+
+    pub fn as_array_mut(&mut self) -> Option<&mut Vec<JsonValue>> {
+        match self {
+            Self::Array(values) => Some(values),
+            _ => None,
+        }
+    }
+
+    pub fn as_object(&self) -> Option<&[(String, JsonValue)]> {
+        match self {
+            Self::Object(entries) => Some(entries.as_slice()),
+            _ => None,
+        }
+    }
+
+    pub fn as_object_mut(&mut self) -> Option<&mut Vec<(String, JsonValue)>> {
+        match self {
+            Self::Object(entries) => Some(entries),
+            _ => None,
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&JsonValue> {
+        match self {
+            Self::Object(entries) => entries.iter().find(|(candidate, _)| candidate == key).map(|(_, value)| value),
+            _ => None,
+        }
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
+        match self {
+            Self::Object(entries) => entries.iter_mut().find(|(candidate, _)| candidate == key).map(|(_, value)| value),
+            _ => None,
         }
     }
 }
@@ -492,6 +604,26 @@ pub fn parse_json_tape(input: &str) -> Result<JsonTape, JsonParseError> {
     }
 }
 
+
+pub fn from_str(input: &str) -> Result<JsonValue, JsonParseError> {
+    parse_json(input)
+}
+
+pub fn from_slice(input: &[u8]) -> Result<JsonValue, JsonParseError> {
+    let input = std::str::from_utf8(input).map_err(|_| JsonParseError::InvalidUtf8)?;
+    parse_json(input)
+}
+
+pub fn to_string(value: &JsonValue) -> Result<String, JsonError> {
+    value.to_json_string()
+}
+
+pub fn to_vec(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
+    let mut out = Vec::with_capacity(initial_json_capacity(value));
+    write_json_value(&mut out, value)?;
+    Ok(out)
+}
+
 impl JsonTape {
     pub fn root<'a>(&'a self, input: &'a str) -> Option<TapeValue<'a>> {
         (!self.tokens.is_empty()).then_some(TapeValue {
@@ -690,6 +822,53 @@ impl<'a> IndexedTapeObject<'a> {
     ) -> impl Iterator<Item = Option<TapeValue<'a>>> + 'b {
         keys.iter().map(|key| self.get_compiled(key))
     }
+}
+
+
+impl fmt::Display for JsonValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.to_json_string() {
+            Ok(json) => f.write_str(&json),
+            Err(_) => Err(fmt::Error),
+        }
+    }
+}
+
+static JSON_NULL: JsonValue = JsonValue::Null;
+
+impl Index<&str> for JsonValue {
+    type Output = JsonValue;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        self.get(index).unwrap_or(&JSON_NULL)
+    }
+}
+
+impl Index<usize> for JsonValue {
+    type Output = JsonValue;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            JsonValue::Array(values) => values.get(index).unwrap_or(&JSON_NULL),
+            _ => &JSON_NULL,
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! json {
+    (null) => {
+        $crate::JsonValue::Null
+    };
+    ([$($element:tt),* $(,)?]) => {
+        $crate::JsonValue::Array(vec![$($crate::json!($element)),*])
+    };
+    ({$($key:literal : $value:tt),* $(,)?}) => {
+        $crate::JsonValue::Object(vec![$(($key.to_owned(), $crate::json!($value))),*])
+    };
+    ($other:expr) => {
+        $crate::JsonValue::from($other)
+    };
 }
 
 fn hash_key(bytes: &[u8]) -> u64 {
@@ -1846,6 +2025,34 @@ mod tests {
             .map(|value| value.map(|value| value.kind()))
             .collect::<Vec<_>>();
         assert_eq!(got, vec![Some(TapeTokenKind::String), Some(TapeTokenKind::Bool), None]);
+    }
+
+    #[test]
+    fn serde_style_convenience_api_works() {
+        let value = from_str(r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#).unwrap();
+        assert!(value.is_object());
+        assert_eq!(value["ok"].as_bool(), Some(true));
+        assert_eq!(value["n"].as_i64(), Some(7));
+        assert_eq!(value["msg"].as_str(), Some("hello"));
+        assert_eq!(value["items"][1].as_u64(), Some(2));
+        assert!(value["missing"].is_null());
+        assert_eq!(to_string(&value).unwrap(), r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#);
+        assert_eq!(from_slice(br#"[1,true,"x"]"#).unwrap()[2].as_str(), Some("x"));
+        assert_eq!(to_vec(&value).unwrap(), value.to_json_string().unwrap().into_bytes());
+    }
+
+    #[test]
+    fn json_macro_builds_values() {
+        let value = json!({"ok": true, "items": [1, 2, null], "msg": "x"});
+        assert_eq!(value["ok"].as_bool(), Some(true));
+        assert_eq!(value["items"][0].as_u64(), Some(1));
+        assert!(value["items"][2].is_null());
+        assert_eq!(value["msg"].as_str(), Some("x"));
+    }
+
+    #[test]
+    fn from_slice_rejects_invalid_utf8() {
+        assert!(matches!(from_slice(&[0xff]), Err(JsonParseError::InvalidUtf8)));
     }
 
     #[test]

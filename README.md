@@ -1,6 +1,6 @@
 # lifegraph-json
 
-Dependency-light JSON toolkit in Rust with **owned**, **borrowed**, **tape**, and **compiled-schema** paths.
+Zero-dependency JSON crate in Rust with **owned**, **borrowed**, **tape**, and **compiled-schema** paths.
 
 ## Why
 
@@ -11,17 +11,40 @@ Dependency-light JSON toolkit in Rust with **owned**, **borrowed**, **tape**, an
 - repeated lookup on wide objects
 - repeated serialization of known object shapes
 
-It uses no external runtime dependencies.
+It uses **0 runtime dependencies**.
 
-## Features
+## Drop-in style surface
 
-- manual JSON serializer
-- owned parser
-- borrowed parser
-- tape parser for fast structural access
-- lazy hashed object indexing
-- compiled lookup keys for repeated field queries
-- compiled object and row schemas for repeated-shape serialization
+`lifegraph-json` now includes a small compatibility-oriented API modeled after common `serde_json` usage:
+
+- `Value`
+- `Number`
+- `from_str`
+- `from_slice`
+- `to_string`
+- `to_vec`
+- `json!`
+- `value["field"]` and `value[index]`
+- `as_str`, `as_bool`, `as_i64`, `as_u64`, `as_f64`
+- `is_null`, `is_array`, `is_object`, etc.
+
+It is **not** fully drop-in compatible with `serde_json` yet, but simple code ports are now much easier.
+
+## Example: familiar `Value` usage
+
+```rust
+use lifegraph_json::{from_str, json, to_string, Value};
+
+let value: Value = from_str(r#"{"ok":true,"n":7}"#)?;
+assert_eq!(value["ok"].as_bool(), Some(true));
+assert_eq!(value["n"].as_i64(), Some(7));
+
+let built = json!({"msg": "hello", "items": [1, 2, null]});
+assert_eq!(built["msg"].as_str(), Some("hello"));
+
+let encoded = to_string(&built)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
 
 ## Example: tape parsing with compiled lookup keys
 
@@ -65,13 +88,10 @@ On local release-mode comparisons against `serde_json`, the strongest wins so fa
 - deep structural parses
 - wide-object repeated lookup with indexed compiled keys
 
-This crate is best viewed as a **performance-oriented JSON toolkit for specific workloads**, not a blanket replacement for `serde_json`.
+Best observed outliers so far include roughly:
 
-## Status
+- **up to ~6x faster** on deep structural parses
+- **~4x faster** on several tape parse / parse+lookup workloads
+- **~3x faster** on indexed repeated lookup over wide objects
 
-Current focus:
-
-- correctness
-- benchmarked fast parse and lookup paths
-- zero/low-allocation access modes
-- repeated-shape serialization
+This crate is best viewed as a **performance-oriented JSON toolkit for specific workloads**, with a growing compatibility layer for easier adoption.
