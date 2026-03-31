@@ -28,7 +28,7 @@ It uses **0 runtime dependencies**.
 
 It is **not** fully drop-in compatible with `serde_json` yet, but simple code ports are getting much easier.
 
-Newer compatibility helpers now include JSON Pointer access (`Value::pointer`, `Value::pointer_mut`), `Value::take`, and pretty-print output helpers.
+Newer compatibility helpers now include JSON Pointer access (`Value::pointer`, `Value::pointer_mut`), `Value::take`, pretty-print output helpers, number/null parity helpers, and nested mutable indexing like `value["a"]["b"] = ...`.
 
 ## Migration sketch
 

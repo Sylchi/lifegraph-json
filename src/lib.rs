@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io::{Read, Write};
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 
 #[derive(Clone, Debug, PartialEq)]
@@ -9,6 +9,49 @@ pub enum JsonNumber {
     I64(i64),
     U64(u64),
     F64(f64),
+}
+
+
+impl JsonNumber {
+    pub fn is_i64(&self) -> bool {
+        matches!(self, Self::I64(_))
+    }
+
+    pub fn is_u64(&self) -> bool {
+        matches!(self, Self::U64(_))
+    }
+
+    pub fn is_f64(&self) -> bool {
+        matches!(self, Self::F64(_))
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::I64(value) => Some(*value),
+            Self::U64(value) => (*value <= i64::MAX as u64).then_some(*value as i64),
+            Self::F64(_) => None,
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::I64(value) => (*value >= 0).then_some(*value as u64),
+            Self::U64(value) => Some(*value),
+            Self::F64(_) => None,
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::I64(value) => Some(*value as f64),
+            Self::U64(value) => Some(*value as f64),
+            Self::F64(value) => Some(*value),
+        }
+    }
+
+    pub fn from_f64(value: f64) -> Option<Self> {
+        value.is_finite().then_some(Self::F64(value))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -204,7 +247,11 @@ impl JsonValue {
     }
 
     pub fn is_null(&self) -> bool {
-        matches!(self, Self::Null)
+        self.as_null().is_some()
+    }
+
+    pub fn as_null(&self) -> Option<()> {
+        matches!(self, Self::Null).then_some(())
     }
 
     pub fn is_boolean(&self) -> bool {
@@ -234,29 +281,35 @@ impl JsonValue {
         }
     }
 
-    pub fn as_i64(&self) -> Option<i64> {
+    pub fn as_number(&self) -> Option<&JsonNumber> {
         match self {
-            Self::Number(JsonNumber::I64(value)) => Some(*value),
-            Self::Number(JsonNumber::U64(value)) => (*value <= i64::MAX as u64).then_some(*value as i64),
+            Self::Number(number) => Some(number),
             _ => None,
         }
+    }
+
+    pub fn is_i64(&self) -> bool {
+        self.as_number().is_some_and(JsonNumber::is_i64)
+    }
+
+    pub fn is_u64(&self) -> bool {
+        self.as_number().is_some_and(JsonNumber::is_u64)
+    }
+
+    pub fn is_f64(&self) -> bool {
+        self.as_number().is_some_and(JsonNumber::is_f64)
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        self.as_number().and_then(JsonNumber::as_i64)
     }
 
     pub fn as_u64(&self) -> Option<u64> {
-        match self {
-            Self::Number(JsonNumber::I64(value)) => (*value >= 0).then_some(*value as u64),
-            Self::Number(JsonNumber::U64(value)) => Some(*value),
-            _ => None,
-        }
+        self.as_number().and_then(JsonNumber::as_u64)
     }
 
     pub fn as_f64(&self) -> Option<f64> {
-        match self {
-            Self::Number(JsonNumber::I64(value)) => Some(*value as f64),
-            Self::Number(JsonNumber::U64(value)) => Some(*value as f64),
-            Self::Number(JsonNumber::F64(value)) => Some(*value),
-            _ => None,
-        }
+        self.as_number().and_then(JsonNumber::as_f64)
     }
 
     pub fn as_str(&self) -> Option<&str> {
@@ -296,14 +349,14 @@ impl JsonValue {
 
     pub fn get(&self, key: &str) -> Option<&JsonValue> {
         match self {
-            Self::Object(entries) => entries.iter().find(|(candidate, _)| candidate == key).map(|(_, value)| value),
+            Self::Object(entries) => object_get(entries, key),
             _ => None,
         }
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
         match self {
-            Self::Object(entries) => entries.iter_mut().find(|(candidate, _)| candidate == key).map(|(_, value)| value),
+            Self::Object(entries) => object_get_mut(entries, key),
             _ => None,
         }
     }
@@ -980,11 +1033,71 @@ impl fmt::Display for JsonValue {
 
 static JSON_NULL: JsonValue = JsonValue::Null;
 
+fn object_get<'a>(entries: &'a [(String, JsonValue)], key: &str) -> Option<&'a JsonValue> {
+    entries
+        .iter()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, value)| value)
+}
+
+fn object_get_mut<'a>(entries: &'a mut Vec<(String, JsonValue)>, key: &str) -> Option<&'a mut JsonValue> {
+    entries
+        .iter_mut()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, value)| value)
+}
+
+fn object_index_or_insert<'a>(value: &'a mut JsonValue, key: &str) -> &'a mut JsonValue {
+    if matches!(value, JsonValue::Null) {
+        *value = JsonValue::Object(Vec::new());
+    }
+    match value {
+        JsonValue::Object(entries) => {
+            if let Some(pos) = entries.iter().position(|(candidate, _)| candidate == key) {
+                &mut entries[pos].1
+            } else {
+                entries.push((key.to_owned(), JsonValue::Null));
+                &mut entries.last_mut().unwrap().1
+            }
+        }
+        JsonValue::Null => unreachable!(),
+        JsonValue::Bool(_) => panic!("cannot access key {:?} in JSON boolean", key),
+        JsonValue::Number(_) => panic!("cannot access key {:?} in JSON number", key),
+        JsonValue::String(_) => panic!("cannot access key {:?} in JSON string", key),
+        JsonValue::Array(_) => panic!("cannot access key {:?} in JSON array", key),
+    }
+}
+
+fn array_index_or_panic(value: &mut JsonValue, index: usize) -> &mut JsonValue {
+    match value {
+        JsonValue::Array(values) => {
+            let len = values.len();
+            values.get_mut(index).unwrap_or_else(|| panic!("cannot access index {} of JSON array of length {}", index, len))
+        }
+        JsonValue::Null => panic!("cannot access index {} of JSON null", index),
+        JsonValue::Bool(_) => panic!("cannot access index {} of JSON boolean", index),
+        JsonValue::Number(_) => panic!("cannot access index {} of JSON number", index),
+        JsonValue::String(_) => panic!("cannot access index {} of JSON string", index),
+        JsonValue::Object(_) => panic!("cannot access index {} of JSON object", index),
+    }
+}
+
 impl Index<&str> for JsonValue {
     type Output = JsonValue;
 
     fn index(&self, index: &str) -> &Self::Output {
-        self.get(index).unwrap_or(&JSON_NULL)
+        match self {
+            JsonValue::Object(entries) => object_get(entries, index).unwrap_or(&JSON_NULL),
+            _ => &JSON_NULL,
+        }
+    }
+}
+
+impl Index<String> for JsonValue {
+    type Output = JsonValue;
+
+    fn index(&self, index: String) -> &Self::Output {
+        self.index(index.as_str())
     }
 }
 
@@ -996,6 +1109,24 @@ impl Index<usize> for JsonValue {
             JsonValue::Array(values) => values.get(index).unwrap_or(&JSON_NULL),
             _ => &JSON_NULL,
         }
+    }
+}
+
+impl IndexMut<&str> for JsonValue {
+    fn index_mut(&mut self, index: &str) -> &mut Self::Output {
+        object_index_or_insert(self, index)
+    }
+}
+
+impl IndexMut<String> for JsonValue {
+    fn index_mut(&mut self, index: String) -> &mut Self::Output {
+        object_index_or_insert(self, &index)
+    }
+}
+
+impl IndexMut<usize> for JsonValue {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        array_index_or_panic(self, index)
     }
 }
 
@@ -2309,6 +2440,28 @@ mod tests {
         assert_eq!(object["x"].as_u64(), Some(1));
         let array = JsonValue::from_iter([1u64, 2u64, 3u64]);
         assert_eq!(array.get_index(2).and_then(JsonValue::as_u64), Some(3));
+    }
+
+    #[test]
+    fn number_and_mut_index_parity_helpers_work() {
+        let int = JsonValue::from(7i64);
+        assert!(int.is_i64());
+        assert!(!int.is_u64());
+        assert!(!int.is_f64());
+        assert_eq!(int.as_number().and_then(JsonNumber::as_i64), Some(7));
+
+        let float = JsonValue::Number(JsonNumber::from_f64(2.5).unwrap());
+        assert!(float.is_f64());
+        assert_eq!(float.as_f64(), Some(2.5));
+        assert_eq!(JsonValue::Null.as_null(), Some(()));
+
+        let mut value = JsonValue::Null;
+        value["a"]["b"]["c"] = JsonValue::from(true);
+        assert_eq!(value.pointer("/a/b/c").and_then(JsonValue::as_bool), Some(true));
+
+        value["arr"] = json!([1, 2, 3]);
+        value["arr"][1] = JsonValue::from(9u64);
+        assert_eq!(value.pointer("/arr/1").and_then(JsonValue::as_u64), Some(9));
     }
 
     #[test]
