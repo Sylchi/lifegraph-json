@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::fmt;
+use std::io::{Read, Write};
 use std::ops::Index;
 
 
@@ -22,6 +23,7 @@ pub enum JsonValue {
 
 pub type Value = JsonValue;
 pub type Number = JsonNumber;
+pub type Map = Vec<(String, JsonValue)>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BorrowedJsonValue<'a> {
@@ -107,6 +109,7 @@ struct CompiledField {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JsonError {
     NonFiniteNumber,
+    Io,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,6 +133,7 @@ impl fmt::Display for JsonError {
             Self::NonFiniteNumber => {
                 f.write_str("cannot serialize non-finite floating-point value")
             }
+            Self::Io => f.write_str("i/o error while serializing JSON"),
         }
     }
 }
@@ -300,6 +304,44 @@ impl JsonValue {
     pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
         match self {
             Self::Object(entries) => entries.iter_mut().find(|(candidate, _)| candidate == key).map(|(_, value)| value),
+            _ => None,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Array(values) => values.len(),
+            Self::Object(entries) => entries.len(),
+            _ => 0,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn as_i128(&self) -> Option<i128> {
+        self.as_i64().map(|v| v as i128)
+    }
+
+    pub fn as_u128(&self) -> Option<u128> {
+        self.as_u64().map(|v| v as u128)
+    }
+
+    pub fn as_f32(&self) -> Option<f32> {
+        self.as_f64().map(|v| v as f32)
+    }
+
+    pub fn get_index(&self, index: usize) -> Option<&JsonValue> {
+        match self {
+            Self::Array(values) => values.get(index),
+            _ => None,
+        }
+    }
+
+    pub fn get_index_mut(&mut self, index: usize) -> Option<&mut JsonValue> {
+        match self {
+            Self::Array(values) => values.get_mut(index),
             _ => None,
         }
     }
@@ -564,6 +606,30 @@ where
     }
 }
 
+
+impl<K, V> std::iter::FromIterator<(K, V)> for JsonValue
+where
+    K: Into<String>,
+    V: Into<JsonValue>,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self::Object(
+            iter.into_iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect(),
+        )
+    }
+}
+
+impl<T> std::iter::FromIterator<T> for JsonValue
+where
+    T: Into<JsonValue>,
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::Array(iter.into_iter().map(Into::into).collect())
+    }
+}
+
 pub fn escape_json_string(input: &str) -> String {
     let mut out = Vec::with_capacity(input.len() + 2);
     write_escaped_json_string(&mut out, input);
@@ -622,6 +688,19 @@ pub fn to_vec(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
     let mut out = Vec::with_capacity(initial_json_capacity(value));
     write_json_value(&mut out, value)?;
     Ok(out)
+}
+
+pub fn from_reader<R: Read>(mut reader: R) -> Result<JsonValue, JsonParseError> {
+    let mut input = String::new();
+    reader
+        .read_to_string(&mut input)
+        .map_err(|_| JsonParseError::InvalidUtf8)?;
+    parse_json(&input)
+}
+
+pub fn to_writer<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonError> {
+    let bytes = to_vec(value)?;
+    writer.write_all(&bytes).map_err(|_| JsonError::Io)
 }
 
 impl JsonTape {
@@ -2053,6 +2132,23 @@ mod tests {
     #[test]
     fn from_slice_rejects_invalid_utf8() {
         assert!(matches!(from_slice(&[0xff]), Err(JsonParseError::InvalidUtf8)));
+    }
+
+    #[test]
+    fn reader_writer_and_collection_helpers_work() {
+        let value = from_reader(std::io::Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8])).unwrap();
+        assert_eq!(value["a"].as_u64(), Some(1));
+        assert_eq!(value["b"].len(), 2);
+        assert_eq!(value["b"].get_index(1).and_then(JsonValue::as_bool), Some(false));
+
+        let mut out = Vec::new();
+        to_writer(&mut out, &value).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), value.to_json_string().unwrap());
+
+        let object = JsonValue::from_iter([("x", 1u64), ("y", 2u64)]);
+        assert_eq!(object["x"].as_u64(), Some(1));
+        let array = JsonValue::from_iter([1u64, 2u64, 3u64]);
+        assert_eq!(array.get_index(2).and_then(JsonValue::as_u64), Some(3));
     }
 
     #[test]

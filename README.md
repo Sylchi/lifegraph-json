@@ -13,36 +13,48 @@ Zero-dependency JSON crate in Rust with **owned**, **borrowed**, **tape**, and *
 
 It uses **0 runtime dependencies**.
 
-## Drop-in style surface
+## Compatibility surface
 
-`lifegraph-json` now includes a small compatibility-oriented API modeled after common `serde_json` usage:
+`lifegraph-json` now includes a growing compatibility-oriented API modeled after common `serde_json` usage:
 
-- `Value`
-- `Number`
-- `from_str`
-- `from_slice`
-- `to_string`
-- `to_vec`
+- `Value`, `Number`, `Map`
+- `from_str`, `from_slice`, `from_reader`
+- `to_string`, `to_vec`, `to_writer`
 - `json!`
 - `value["field"]` and `value[index]`
+- `get`, `get_mut`, `get_index`, `get_index_mut`
 - `as_str`, `as_bool`, `as_i64`, `as_u64`, `as_f64`
-- `is_null`, `is_array`, `is_object`, etc.
+- `is_null`, `is_array`, `is_object`, `len`, `is_empty`
 
-It is **not** fully drop-in compatible with `serde_json` yet, but simple code ports are now much easier.
+It is **not** fully drop-in compatible with `serde_json` yet, but simple code ports are getting much easier.
 
-## Example: familiar `Value` usage
+## Migration sketch
 
 ```rust
-use lifegraph_json::{from_str, json, to_string, Value};
+// before
+// use serde_json::{json, Value};
+
+// after
+use lifegraph_json::{json, from_str, to_string, Value};
 
 let value: Value = from_str(r#"{"ok":true,"n":7}"#)?;
 assert_eq!(value["ok"].as_bool(), Some(true));
 assert_eq!(value["n"].as_i64(), Some(7));
 
 let built = json!({"msg": "hello", "items": [1, 2, null]});
-assert_eq!(built["msg"].as_str(), Some("hello"));
-
 let encoded = to_string(&built)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+## Example: reader/writer helpers
+
+```rust
+use lifegraph_json::{from_reader, to_writer};
+use std::io::Cursor;
+
+let value = from_reader(Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8]))?;
+let mut out = Vec::new();
+to_writer(&mut out, &value)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -66,21 +78,7 @@ assert_eq!(kinds, vec![TapeTokenKind::String, TapeTokenKind::Bool]);
 # Ok::<(), lifegraph_json::JsonParseError>(())
 ```
 
-## Example: compiled row serialization
-
-```rust
-use lifegraph_json::{CompiledRowSchema, JsonValue};
-
-let schema = CompiledRowSchema::new(&["id", "name"]);
-let row1 = [JsonValue::from(1u64), JsonValue::from("a")];
-let row2 = [JsonValue::from(2u64), JsonValue::from("b")];
-
-let json = schema.to_json_string([row1.iter(), row2.iter()])?;
-assert_eq!(json, r#"[{"id":1,"name":"a"},{"id":2,"name":"b"}]"#);
-# Ok::<(), lifegraph_json::JsonError>(())
-```
-
-## Current performance direction
+## Performance direction
 
 On local release-mode comparisons against `serde_json`, the strongest wins so far have been in specialized paths such as:
 
