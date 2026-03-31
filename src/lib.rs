@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io::{Read, Write};
-use std::ops::{Index, IndexMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,12 +95,57 @@ pub enum JsonValue {
     Number(JsonNumber),
     String(String),
     Array(Vec<JsonValue>),
-    Object(Vec<(String, JsonValue)>),
+    Object(Map),
 }
 
 pub type Value = JsonValue;
 pub type Number = JsonNumber;
-pub type Map = Vec<(String, JsonValue)>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Map(Vec<(String, JsonValue)>);
+
+impl Map {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = &String> {
+        self.0.iter().map(|(key, _)| key)
+    }
+}
+
+impl Default for Map {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Vec<(String, JsonValue)>> for Map {
+    fn from(value: Vec<(String, JsonValue)>) -> Self {
+        Self(value)
+    }
+}
+
+
+impl std::iter::FromIterator<(String, JsonValue)> for Map {
+    fn from_iter<T: IntoIterator<Item = (String, JsonValue)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl Deref for Map {
+    type Target = Vec<(String, JsonValue)>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Map {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BorrowedJsonValue<'a> {
@@ -280,7 +325,7 @@ impl JsonValue {
             entries
                 .into_iter()
                 .map(|(key, value)| (key.into(), value))
-                .collect(),
+                 .collect::<Vec<_>>().into(),
         )
     }
 
@@ -812,7 +857,7 @@ where
         Self::Object(
             iter.into_iter()
                 .map(|(key, value)| (key.into(), value.into()))
-                .collect(),
+                 .collect::<Vec<_>>().into(),
         )
     }
 }
@@ -1204,7 +1249,7 @@ fn object_get_mut<'a>(entries: &'a mut Vec<(String, JsonValue)>, key: &str) -> O
 
 fn object_index_or_insert<'a>(value: &'a mut JsonValue, key: &str) -> &'a mut JsonValue {
     if matches!(value, JsonValue::Null) {
-        *value = JsonValue::Object(Vec::new());
+        *value = JsonValue::Object(Map::new());
     }
     match value {
         JsonValue::Object(entries) => {
@@ -1490,9 +1535,9 @@ macro_rules! json_internal {
     (false) => { $crate::JsonValue::Bool(false) };
     ([]) => { $crate::JsonValue::Array(vec![]) };
     ([ $($tt:tt)+ ]) => { $crate::JsonValue::Array($crate::json_internal!(@array [] $($tt)+)) };
-    ({}) => { $crate::JsonValue::Object(vec![]) };
+    ({}) => { $crate::JsonValue::Object($crate::Map::new()) };
     ({ $($tt:tt)+ }) => {{
-        let mut object = Vec::new();
+        let mut object = $crate::Map::new();
         $crate::json_internal!(@object object () ($($tt)+) ($($tt)+));
         $crate::JsonValue::Object(object)
     }};
@@ -2083,7 +2128,7 @@ impl<'a> Parser<'a> {
     fn parse_object(&mut self) -> Result<JsonValue, JsonParseError> {
         self.consume_byte(b'{')?;
         self.skip_whitespace();
-        let mut entries = Vec::new();
+        let mut entries = Map::new();
         if self.try_consume_byte(b'}') {
             return Ok(JsonValue::Object(entries));
         }
@@ -2889,6 +2934,27 @@ mod tests {
     }
 
     #[test]
+    fn serde_map_style_tests_work() {
+        let v: Value = from_str(r#"{"b":null,"a":null,"c":null}"#).unwrap();
+        let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(keys, vec!["b", "a", "c"]);
+
+        let mut v: Value = from_str(r#"{"b":null,"a":null,"c":null}"#).unwrap();
+        let val = v.as_object_mut().unwrap();
+        let mut m = Map::new();
+        m.append(val);
+        let keys: Vec<_> = m.keys().cloned().collect();
+        assert_eq!(keys, vec!["b", "a", "c"]);
+        assert!(val.is_empty());
+
+        let mut v: Value = from_str(r#"{"b":null,"a":null,"c":null}"#).unwrap();
+        let val = v.as_object_mut().unwrap();
+        val.retain(|(k, _)| k.as_str() != "b");
+        let keys: Vec<_> = val.keys().cloned().collect();
+        assert_eq!(keys, vec!["a", "c"]);
+    }
+
+    #[test]
     fn serde_value_doc_examples_get_and_index_work() {
         let object = json!({"A": 65, "B": 66, "C": 67});
         assert_eq!(*object.get("A").unwrap(), json!(65));
@@ -3050,7 +3116,7 @@ mod tests {
             JsonValue::Array(vec![
                 JsonValue::Bool(true),
                 JsonValue::String("nested".into()),
-                JsonValue::Object(vec![("x".into(), 1u64.into())]),
+                JsonValue::Object(Map::from(vec![("x".into(), 1u64.into())])),
             ]),
         ];
         for value in values {
@@ -3187,7 +3253,7 @@ mod tests {
                         random_json_value(rng, depth + 1, max_depth),
                     ));
                 }
-                JsonValue::Object(entries)
+                JsonValue::Object(Map::from(entries))
             }
         }
     }

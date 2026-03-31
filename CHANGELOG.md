@@ -1,15 +1,17 @@
 # Changelog
 
+## 0.1.11 - 2026-04-01
+
+Map parity release.
+
+### Added
+- real `Map` type instead of a bare type alias
+- `Map::new` and `Map::keys`
+- serde_json-style map behavior tests for append/retain/key iteration
+
 ## 0.1.10 - 2026-04-01
 
 Real serde_json example compatibility release.
-
-### Added
-- a batch of ported serde_json doc/example tests for `Value` and `Number`
-- compatibility fixes driven by those examples
-
-### Fixed
-- positive signed integer semantics now better match serde_json `Number` behavior
 
 ## 0.1.9 - 2026-04-01
 
