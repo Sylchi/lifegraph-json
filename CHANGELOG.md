@@ -1,12 +1,16 @@
 # Changelog
 
+## 0.1.14 - 2026-04-01
+
+Parser regression coverage release.
+
+### Added
+- more non-serde parser regression tests for malformed numbers, arrays, and objects
+- additional compatibility coverage for parse-error edge cases
+
 ## 0.1.13 - 2026-04-01
 
 Pure JSON parse compatibility release.
-
-### Added
-- more serde_json-derived pure parse tests for null/bool/string/list/object cases
-- negative-zero parse coverage
 
 ## 0.1.12 - 2026-04-01
 

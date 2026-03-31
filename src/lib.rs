@@ -3170,6 +3170,24 @@ mod tests {
     }
 
     #[test]
+    fn parser_regression_cases_work() {
+        assert!(matches!(from_str("+"), Err(JsonParseError::UnexpectedCharacter { .. })));
+        assert!(matches!(from_str("."), Err(JsonParseError::UnexpectedCharacter { .. })));
+        assert!(matches!(from_str("-"), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. }) | Err(JsonParseError::UnexpectedCharacter { .. })));
+        assert!(matches!(from_str("00"), Err(JsonParseError::InvalidNumber { .. })));
+        assert!(matches!(from_str("0."), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })));
+        assert!(matches!(from_str("1e"), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })));
+        assert!(matches!(from_str("1e+"), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })));
+        assert!(matches!(from_str("1a"), Err(JsonParseError::UnexpectedTrailingCharacters(_))));
+        assert!(matches!(from_str("[1,]"), Err(JsonParseError::UnexpectedCharacter { .. }) | Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::ExpectedCommaOrEnd { .. })));
+        assert!(matches!(from_str("[1 2]"), Err(JsonParseError::ExpectedCommaOrEnd { .. })));
+        assert!(matches!(from_str(r#"{"a":1 1"#), Err(JsonParseError::ExpectedCommaOrEnd { .. })));
+        assert!(matches!(from_str(r#"{"a":1,"#), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::UnexpectedCharacter { .. })));
+        assert!(matches!(from_str("{1"), Err(JsonParseError::UnexpectedCharacter { .. })));
+        assert!(matches!(from_str(r#""\uD83C\uFFFF""#), Err(JsonParseError::InvalidUnicodeScalar { .. })));
+    }
+
+    #[test]
     fn rejects_invalid_json_inputs() {
         assert!(matches!(
             parse_json("{"),
