@@ -22,7 +22,7 @@ It uses **0 runtime dependencies**.
 - `to_string`, `to_vec`, `to_writer`
 - `json!`
 - `value["field"]` and `value[index]`
-- `get`, `get_mut`, `get_index`, `get_index_mut`
+- generic `get`, `get_mut`, plus `get_index`, `get_index_mut`
 - `as_str`, `as_bool`, `as_i64`, `as_u64`, `as_f64`
 - `is_null`, `is_array`, `is_object`, `len`, `is_empty`
 

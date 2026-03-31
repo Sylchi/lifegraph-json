@@ -347,18 +347,18 @@ impl JsonValue {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&JsonValue> {
-        match self {
-            Self::Object(entries) => object_get(entries, key),
-            _ => None,
-        }
+    pub fn get<I>(&self, index: I) -> Option<&JsonValue>
+    where
+        I: ValueIndex,
+    {
+        index.index_into(self)
     }
 
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
-        match self {
-            Self::Object(entries) => object_get_mut(entries, key),
-            _ => None,
-        }
+    pub fn get_mut<I>(&mut self, index: I) -> Option<&mut JsonValue>
+    where
+        I: ValueIndex,
+    {
+        index.index_into_mut(self)
     }
 
     pub fn len(&self) -> usize {
@@ -1032,6 +1032,66 @@ impl fmt::Display for JsonValue {
 }
 
 static JSON_NULL: JsonValue = JsonValue::Null;
+
+pub trait ValueIndex {
+    fn index_into<'a>(&self, value: &'a JsonValue) -> Option<&'a JsonValue>;
+    fn index_into_mut<'a>(&self, value: &'a mut JsonValue) -> Option<&'a mut JsonValue>;
+}
+
+impl ValueIndex for usize {
+    fn index_into<'a>(&self, value: &'a JsonValue) -> Option<&'a JsonValue> {
+        match value {
+            JsonValue::Array(values) => values.get(*self),
+            _ => None,
+        }
+    }
+
+    fn index_into_mut<'a>(&self, value: &'a mut JsonValue) -> Option<&'a mut JsonValue> {
+        match value {
+            JsonValue::Array(values) => values.get_mut(*self),
+            _ => None,
+        }
+    }
+}
+
+impl ValueIndex for str {
+    fn index_into<'a>(&self, value: &'a JsonValue) -> Option<&'a JsonValue> {
+        match value {
+            JsonValue::Object(entries) => object_get(entries, self),
+            _ => None,
+        }
+    }
+
+    fn index_into_mut<'a>(&self, value: &'a mut JsonValue) -> Option<&'a mut JsonValue> {
+        match value {
+            JsonValue::Object(entries) => object_get_mut(entries, self),
+            _ => None,
+        }
+    }
+}
+
+impl ValueIndex for String {
+    fn index_into<'a>(&self, value: &'a JsonValue) -> Option<&'a JsonValue> {
+        self.as_str().index_into(value)
+    }
+
+    fn index_into_mut<'a>(&self, value: &'a mut JsonValue) -> Option<&'a mut JsonValue> {
+        self.as_str().index_into_mut(value)
+    }
+}
+
+impl<T> ValueIndex for &T
+where
+    T: ?Sized + ValueIndex,
+{
+    fn index_into<'a>(&self, value: &'a JsonValue) -> Option<&'a JsonValue> {
+        (**self).index_into(value)
+    }
+
+    fn index_into_mut<'a>(&self, value: &'a mut JsonValue) -> Option<&'a mut JsonValue> {
+        (**self).index_into_mut(value)
+    }
+}
 
 fn object_get<'a>(entries: &'a [(String, JsonValue)], key: &str) -> Option<&'a JsonValue> {
     entries
@@ -2440,6 +2500,17 @@ mod tests {
         assert_eq!(object["x"].as_u64(), Some(1));
         let array = JsonValue::from_iter([1u64, 2u64, 3u64]);
         assert_eq!(array.get_index(2).and_then(JsonValue::as_u64), Some(3));
+    }
+
+    #[test]
+    fn generic_get_and_get_mut_index_parity_work() {
+        let mut value = json!({"obj": {"x": 1}, "arr": [10, 20, 30]});
+        let key = String::from("obj");
+        assert_eq!(value.get("obj").and_then(|v| v.get("x")).and_then(JsonValue::as_u64), Some(1));
+        assert_eq!(value.get(&key).and_then(|v| v.get("x")).and_then(JsonValue::as_u64), Some(1));
+        assert_eq!(value.get("arr").and_then(|v| v.get(1)).and_then(JsonValue::as_u64), Some(20));
+        *value.get_mut("arr").unwrap().get_mut(2).unwrap() = JsonValue::from(99u64);
+        assert_eq!(value["arr"][2].as_u64(), Some(99));
     }
 
     #[test]
