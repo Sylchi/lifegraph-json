@@ -1,13 +1,16 @@
 # Changelog
 
+## 0.1.12 - 2026-04-01
+
+Map ergonomics refinement release.
+
+### Added
+- `Map::{get,get_mut,contains_key,insert,remove,append,retain,values,values_mut,iter,iter_mut}`
+- more serde_json-style map tests
+
 ## 0.1.11 - 2026-04-01
 
 Map parity release.
-
-### Added
-- real `Map` type instead of a bare type alias
-- `Map::new` and `Map::keys`
-- serde_json-style map behavior tests for append/retain/key iteration
 
 ## 0.1.10 - 2026-04-01
 

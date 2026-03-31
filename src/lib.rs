@@ -112,6 +112,71 @@ impl Map {
     pub fn keys(&self) -> impl ExactSizeIterator<Item = &String> {
         self.0.iter().map(|(key, _)| key)
     }
+
+    pub fn values(&self) -> impl ExactSizeIterator<Item = &JsonValue> {
+        self.0.iter().map(|(_, value)| value)
+    }
+
+    pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut JsonValue> {
+        self.0.iter_mut().map(|(_, value)| value)
+    }
+
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &(String, JsonValue)> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (String, JsonValue)> {
+        self.0.iter_mut()
+    }
+
+    pub fn get(&self, key: &str) -> Option<&JsonValue> {
+        self.0.iter().find(|(candidate, _)| candidate == key).map(|(_, value)| value)
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
+        self.0.iter_mut().find(|(candidate, _)| candidate == key).map(|(_, value)| value)
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.get(key).is_some()
+    }
+
+    pub fn insert(&mut self, key: String, value: JsonValue) -> Option<JsonValue> {
+        if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
+            return Some(std::mem::replace(existing, value));
+        }
+        self.0.push((key, value));
+        None
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<JsonValue> {
+        self.0
+            .iter()
+            .position(|(candidate, _)| candidate == key)
+            .map(|index| self.0.remove(index).1)
+    }
+
+    pub fn append(&mut self, other: &mut Self) {
+        self.0.append(&mut other.0);
+    }
+
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&String, &mut JsonValue) -> bool,
+    {
+        let mut i = 0;
+        while i < self.0.len() {
+            let keep = {
+                let (key, value) = &mut self.0[i];
+                f(key, value)
+            };
+            if keep {
+                i += 1;
+            } else {
+                self.0.remove(i);
+            }
+        }
+    }
 }
 
 impl Default for Map {
@@ -1253,11 +1318,11 @@ fn object_index_or_insert<'a>(value: &'a mut JsonValue, key: &str) -> &'a mut Js
     }
     match value {
         JsonValue::Object(entries) => {
-            if let Some(pos) = entries.iter().position(|(candidate, _)| candidate == key) {
-                &mut entries[pos].1
+            if let Some(pos) = entries.0.iter().position(|(candidate, _)| candidate == key) {
+                &mut entries.0[pos].1
             } else {
-                entries.push((key.to_owned(), JsonValue::Null));
-                &mut entries.last_mut().unwrap().1
+                entries.0.push((key.to_owned(), JsonValue::Null));
+                &mut entries.0.last_mut().unwrap().1
             }
         }
         JsonValue::Null => unreachable!(),
@@ -2934,6 +2999,19 @@ mod tests {
     }
 
     #[test]
+    fn map_get_insert_remove_and_contains_key_work() {
+        let mut map = Map::new();
+        assert_eq!(map.insert("x".to_owned(), JsonValue::from(1u64)), None);
+        assert!(map.contains_key("x"));
+        assert_eq!(map.get("x").and_then(JsonValue::as_u64), Some(1));
+        *map.get_mut("x").unwrap() = JsonValue::from(2u64);
+        assert_eq!(map.get("x").and_then(JsonValue::as_u64), Some(2));
+        assert_eq!(map.insert("x".to_owned(), JsonValue::from(3u64)).and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(map.remove("x").and_then(|v| v.as_u64()), Some(3));
+        assert!(!map.contains_key("x"));
+    }
+
+    #[test]
     fn serde_map_style_tests_work() {
         let v: Value = from_str(r#"{"b":null,"a":null,"c":null}"#).unwrap();
         let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
@@ -2949,7 +3027,7 @@ mod tests {
 
         let mut v: Value = from_str(r#"{"b":null,"a":null,"c":null}"#).unwrap();
         let val = v.as_object_mut().unwrap();
-        val.retain(|(k, _)| k.as_str() != "b");
+        val.retain(|k, _| k.as_str() != "b");
         let keys: Vec<_> = val.keys().cloned().collect();
         assert_eq!(keys, vec!["a", "c"]);
     }
