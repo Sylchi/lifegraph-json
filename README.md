@@ -107,3 +107,19 @@ assert_eq!(value["x"], 1);
 assert_eq!(value["ok"], true);
 assert_eq!(value["msg"], "hi");
 ```
+
+## `json!` macro parity
+
+The macro is now much closer to `serde_json` in practice, including expression-key object entries:
+
+```rust
+# use lifegraph_json::json;
+let code = 200;
+let features = vec!["serde", "json"];
+let value = json!({
+    "code": code,
+    "success": code == 200,
+    features[0]: features[1],
+});
+assert_eq!(value["serde"], "json");
+```

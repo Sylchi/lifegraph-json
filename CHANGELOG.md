@@ -1,12 +1,17 @@
 # Changelog
 
+## 0.1.8 - 2026-04-01
+
+`json!` macro parity upgrade.
+
+### Added
+- TT-muncher based `json!` implementation closer to `serde_json`
+- expression-key object support like `features[0]: features[1]`
+- better array/object literal handling and trailing-comma behavior
+
 ## 0.1.7 - 2026-04-01
 
 Primitive comparison parity release.
-
-### Added
-- `PartialEq` parity for strings, booleans, integers, and floats against `Value`
-- support for patterns like `assert_eq!(value["x"], 1)`
 
 ## 0.1.6 - 2026-04-01
 
