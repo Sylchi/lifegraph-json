@@ -341,5 +341,5 @@ where
     T: Serialize + ?Sized,
 {
     let json = crate::to_string(value)?;
-    RawValue::from_string(json.clone()).map_err(|error| crate::serde_error::json_parse_error_to_serde(&json, error))
+    RawValue::from_string(json).map_err(|_| crate::serde_error::Error::custom("invalid JSON from serialization"))
 }

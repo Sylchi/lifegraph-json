@@ -7,7 +7,7 @@ use serde_json_upstream as upstream_json;
 fn raw_value_top_level_borrowed_deserialization_matches_upstream() {
     let input = r#"{"nested":[1,true,{"x":"y"}]}"#;
 
-    let local: &local_json::value::RawValue = local_json::from_str(input).unwrap();
+    let local: &local_json::RawValue = local_json::from_str(input).unwrap();
     let upstream: &upstream_json::value::RawValue = upstream_json::from_str(input).unwrap();
 
     assert_eq!(local.get(), upstream.get());
@@ -17,7 +17,7 @@ fn raw_value_top_level_borrowed_deserialization_matches_upstream() {
 fn raw_value_top_level_boxed_deserialization_matches_upstream() {
     let input = r#"[null,{"a":1},"two"]"#;
 
-    let local: Box<local_json::value::RawValue> = local_json::from_str(input).unwrap();
+    let local: Box<local_json::RawValue> = local_json::from_str(input).unwrap();
     let upstream: Box<upstream_json::value::RawValue> = upstream_json::from_str(input).unwrap();
 
     assert_eq!(local.get(), upstream.get());
@@ -30,7 +30,7 @@ fn raw_value_nested_borrowed_deserialization_matches_upstream() {
     struct Msg<'a> {
         id: u32,
         #[serde(borrow)]
-        payload: &'a local_json::value::RawValue,
+        payload: &'a local_json::RawValue,
     }
 
     #[derive(Debug, serde_crate::Deserialize)]
@@ -56,7 +56,7 @@ fn raw_value_nested_boxed_deserialization_matches_upstream() {
     #[serde(crate = "serde_crate")]
     struct Msg {
         id: u32,
-        payload: Box<local_json::value::RawValue>,
+        payload: Box<local_json::RawValue>,
     }
 
     #[derive(Debug, serde_crate::Deserialize)]
@@ -80,7 +80,7 @@ fn raw_value_enum_newtype_variant_matches_upstream() {
     #[derive(Debug, serde_crate::Deserialize)]
     #[serde(crate = "serde_crate")]
     enum Msg<'a> {
-        Data(#[serde(borrow)] &'a local_json::value::RawValue),
+        Data(#[serde(borrow)] &'a local_json::RawValue),
     }
 
     #[derive(Debug, serde_crate::Deserialize)]
@@ -109,7 +109,7 @@ fn raw_value_enum_struct_variant_matches_upstream() {
         Data {
             id: u32,
             #[serde(borrow)]
-            payload: &'a local_json::value::RawValue,
+            payload: &'a local_json::RawValue,
         },
     }
 
@@ -155,7 +155,7 @@ fn to_raw_value_matches_upstream_rendering() {
         count: 7,
     };
 
-    let local = local_json::value::to_raw_value(&payload).unwrap();
+    let local = local_json::to_raw_value(&payload).unwrap();
     let upstream = upstream_json::value::to_raw_value(&payload).unwrap();
 
     assert_eq!(local.get(), upstream.get());
@@ -177,12 +177,12 @@ fn parse_error_shape_matches_upstream_for_selected_cases() {
     assert_eq!(local.line(), upstream.line());
 }
 
-fn map_category(category: upstream_json::error::Category) -> local_json::error::Category {
+fn map_category(category: upstream_json::error::Category) -> local_json::Category {
     match category {
-        upstream_json::error::Category::Io => local_json::error::Category::Io,
-        upstream_json::error::Category::Syntax => local_json::error::Category::Syntax,
-        upstream_json::error::Category::Data => local_json::error::Category::Data,
-        upstream_json::error::Category::Eof => local_json::error::Category::Eof,
+        upstream_json::error::Category::Io => local_json::Category::Io,
+        upstream_json::error::Category::Syntax => local_json::Category::Syntax,
+        upstream_json::error::Category::Data => local_json::Category::Data,
+        upstream_json::error::Category::Eof => local_json::Category::Eof,
     }
 }
 

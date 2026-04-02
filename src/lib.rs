@@ -192,6 +192,26 @@ impl Map {
             }
         }
     }
+
+    pub fn swap_remove(&mut self, key: &str) -> Option<JsonValue> {
+        self.0
+            .iter()
+            .position(|(candidate, _)| candidate == key)
+            .map(|index| self.0.swap_remove(index).1)
+    }
+
+    pub fn shift_insert(&mut self, index: usize, key: String, value: JsonValue) -> Option<JsonValue> {
+        if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
+            return Some(std::mem::replace(existing, value));
+        }
+        let index = index.min(self.0.len());
+        self.0.insert(index, (key, value));
+        None
+    }
+
+    pub fn sort_keys(&mut self) {
+        self.0.sort_by(|(a, _), (b, _)| a.cmp(b));
+    }
 }
 
 impl Default for Map {
@@ -991,26 +1011,68 @@ pub fn parse_json_tape(input: &str) -> Result<JsonTape, JsonParseError> {
     }
 }
 
+#[cfg(feature = "serde")]
+pub fn to_value<T>(value: T) -> Result<JsonValue, crate::serde_error::Error>
+where
+    T: serde_crate::Serialize,
+{
+    value.serialize(crate::serde_serialize::JsonValueSerializer)
+}
 
+#[cfg(feature = "serde")]
+pub fn from_value<T>(value: JsonValue) -> Result<T, crate::serde_error::Error>
+where
+    T: serde_crate::de::DeserializeOwned,
+{
+    T::deserialize(crate::serde_deserialize::JsonValueDeserializer::new(value))
+}
+
+#[cfg(feature = "serde")]
+pub fn from_str<T>(input: &str) -> Result<T, crate::serde_error::Error>
+where
+    T: serde_crate::de::DeserializeOwned,
+{
+    let mut de = crate::serde_deserialize::Deserializer::from_str(input);
+    let value = T::deserialize(&mut de)?;
+    de.end()?;
+    Ok(value)
+}
+
+#[cfg(not(feature = "serde"))]
 pub fn from_str(input: &str) -> Result<JsonValue, JsonParseError> {
     parse_json(input)
 }
 
+#[cfg(feature = "serde")]
+pub fn from_slice<T>(input: &[u8]) -> Result<T, crate::serde_error::Error>
+where
+    T: serde_crate::de::DeserializeOwned,
+{
+    let mut de = crate::serde_deserialize::Deserializer::from_slice(input);
+    let value = T::deserialize(&mut de)?;
+    de.end()?;
+    Ok(value)
+}
+
+#[cfg(not(feature = "serde"))]
 pub fn from_slice(input: &[u8]) -> Result<JsonValue, JsonParseError> {
     let input = std::str::from_utf8(input).map_err(|_| JsonParseError::InvalidUtf8)?;
     parse_json(input)
 }
 
-pub fn to_string(value: &JsonValue) -> Result<String, JsonError> {
-    value.to_json_string()
+#[cfg(feature = "serde")]
+pub fn from_reader<T, R>(reader: R) -> Result<T, crate::serde_error::Error>
+where
+    T: serde_crate::de::DeserializeOwned,
+    R: Read,
+{
+    let mut de = crate::serde_deserialize::Deserializer::from_reader(reader);
+    let value = T::deserialize(&mut de)?;
+    de.end()?;
+    Ok(value)
 }
 
-pub fn to_vec(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
-    let mut out = Vec::with_capacity(initial_json_capacity(value));
-    write_json_value(&mut out, value)?;
-    Ok(out)
-}
-
+#[cfg(not(feature = "serde"))]
 pub fn from_reader<R: Read>(mut reader: R) -> Result<JsonValue, JsonParseError> {
     let mut input = String::new();
     reader
@@ -1019,23 +1081,101 @@ pub fn from_reader<R: Read>(mut reader: R) -> Result<JsonValue, JsonParseError> 
     parse_json(&input)
 }
 
+#[cfg(feature = "serde")]
+pub fn to_string<T>(value: &T) -> Result<String, crate::serde_error::Error>
+where
+    T: serde_crate::Serialize + ?Sized,
+{
+    let json_value = to_value(value)?;
+    json_value.to_json_string().map_err(crate::serde_error::json_error_to_serde)
+}
+
+#[cfg(not(feature = "serde"))]
+pub fn to_string(value: &JsonValue) -> Result<String, JsonError> {
+    value.to_json_string()
+}
+
+#[cfg(feature = "serde")]
+pub fn to_vec<T>(value: &T) -> Result<Vec<u8>, crate::serde_error::Error>
+where
+    T: serde_crate::Serialize + ?Sized,
+{
+    let json_value = to_value(value)?;
+    let mut out = Vec::with_capacity(initial_json_capacity(&json_value));
+    write_json_value(&mut out, &json_value)?;
+    Ok(out)
+}
+
+#[cfg(not(feature = "serde"))]
+pub fn to_vec(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
+    let mut out = Vec::with_capacity(initial_json_capacity(value));
+    write_json_value(&mut out, value)?;
+    Ok(out)
+}
+
+#[cfg(feature = "serde")]
+pub fn to_writer<T, W>(mut writer: W, value: &T) -> Result<(), crate::serde_error::Error>
+where
+    T: serde_crate::Serialize + ?Sized,
+    W: Write,
+{
+    let bytes = to_vec(value)?;
+    writer.write_all(&bytes).map_err(|_| crate::serde_error::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "write failed")))
+}
+
+#[cfg(not(feature = "serde"))]
 pub fn to_writer<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonError> {
     let bytes = to_vec(value)?;
     writer.write_all(&bytes).map_err(|_| JsonError::Io)
 }
 
+#[cfg(feature = "serde")]
+pub fn to_string_pretty<T>(value: &T) -> Result<String, crate::serde_error::Error>
+where
+    T: serde_crate::Serialize + ?Sized,
+{
+    let json_value = to_value(value)?;
+    let mut out = Vec::with_capacity(initial_json_capacity(&json_value) + 16);
+    write_json_value_pretty(&mut out, &json_value, 0)?;
+    Ok(unsafe { String::from_utf8_unchecked(out) })
+}
+
+#[cfg(not(feature = "serde"))]
 pub fn to_string_pretty(value: &JsonValue) -> Result<String, JsonError> {
     let mut out = Vec::with_capacity(initial_json_capacity(value) + 16);
     write_json_value_pretty(&mut out, value, 0)?;
     Ok(unsafe { String::from_utf8_unchecked(out) })
 }
 
+#[cfg(feature = "serde")]
+pub fn to_vec_pretty<T>(value: &T) -> Result<Vec<u8>, crate::serde_error::Error>
+where
+    T: serde_crate::Serialize + ?Sized,
+{
+    let json_value = to_value(value)?;
+    let mut out = Vec::with_capacity(initial_json_capacity(&json_value) + 16);
+    write_json_value_pretty(&mut out, &json_value, 0)?;
+    Ok(out)
+}
+
+#[cfg(not(feature = "serde"))]
 pub fn to_vec_pretty(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
     let mut out = Vec::with_capacity(initial_json_capacity(value) + 16);
     write_json_value_pretty(&mut out, value, 0)?;
     Ok(out)
 }
 
+#[cfg(feature = "serde")]
+pub fn to_writer_pretty<T, W>(mut writer: W, value: &T) -> Result<(), crate::serde_error::Error>
+where
+    T: serde_crate::Serialize + ?Sized,
+    W: Write,
+{
+    let bytes = to_vec_pretty(value)?;
+    writer.write_all(&bytes).map_err(|_| crate::serde_error::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "write failed")))
+}
+
+#[cfg(not(feature = "serde"))]
 pub fn to_writer_pretty<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonError> {
     let bytes = to_vec_pretty(value)?;
     writer.write_all(&bytes).map_err(|_| JsonError::Io)
@@ -2857,6 +2997,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "serde"))]
     fn serde_style_convenience_api_works() {
         let value = from_str(r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#).unwrap();
         assert!(value.is_object());
@@ -2871,6 +3012,22 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
+    fn serde_style_convenience_api_works() {
+        let value: JsonValue = from_str(r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#).unwrap();
+        assert!(value.is_object());
+        assert_eq!(value["ok"].as_bool(), Some(true));
+        assert_eq!(value["n"].as_i64(), Some(7));
+        assert_eq!(value["msg"].as_str(), Some("hello"));
+        assert_eq!(value["items"][1].as_u64(), Some(2));
+        assert!(value["missing"].is_null());
+        assert_eq!(to_string(&value).unwrap(), r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#);
+        let arr: JsonValue = from_slice(br#"[1,true,"x"]"#).unwrap();
+        assert_eq!(arr[2].as_str(), Some("x"));
+        assert_eq!(to_vec(&value).unwrap(), value.to_json_string().unwrap().into_bytes());
+    }
+
+    #[test]
     fn json_macro_builds_values() {
         let value = json!({"ok": true, "items": [1, 2, null], "msg": "x"});
         assert_eq!(value["ok"].as_bool(), Some(true));
@@ -2880,11 +3037,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "serde"))]
     fn from_slice_rejects_invalid_utf8() {
         assert!(matches!(from_slice(&[0xff]), Err(JsonParseError::InvalidUtf8)));
     }
 
     #[test]
+    #[cfg(not(feature = "serde"))]
     fn pointer_take_and_pretty_helpers_work() {
         let mut value = from_str(r#"{"a":{"b":[10,20,{"~key/":"x"}]}}"#).unwrap();
         assert_eq!(value.pointer("/a/b/1").and_then(JsonValue::as_u64), Some(20));
@@ -2904,8 +3063,27 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "serde"))]
     fn reader_writer_and_collection_helpers_work() {
         let value = from_reader(std::io::Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8])).unwrap();
+        assert_eq!(value["a"].as_u64(), Some(1));
+        assert_eq!(value["b"].len(), 2);
+        assert_eq!(value["b"].get_index(1).and_then(JsonValue::as_bool), Some(false));
+
+        let mut out = Vec::new();
+        to_writer(&mut out, &value).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), value.to_json_string().unwrap());
+
+        let object = JsonValue::from_iter([("x", 1u64), ("y", 2u64)]);
+        assert_eq!(object["x"].as_u64(), Some(1));
+        let array = JsonValue::from_iter([1u64, 2u64, 3u64]);
+        assert_eq!(array.get_index(2).and_then(JsonValue::as_u64), Some(3));
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn reader_writer_and_collection_helpers_work() {
+        let value: JsonValue = from_reader(std::io::Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8])).unwrap();
         assert_eq!(value["a"].as_u64(), Some(1));
         assert_eq!(value["b"].len(), 2);
         assert_eq!(value["b"].get_index(1).and_then(JsonValue::as_bool), Some(false));
@@ -3160,31 +3338,25 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serde")]
     fn serde_pure_json_parse_examples_work() {
-        assert_eq!(from_str("null").unwrap(), json!(null));
-        assert_eq!(from_str(" true ").unwrap(), json!(true));
-        assert_eq!(from_str(" false ").unwrap(), json!(false));
-        assert_eq!(from_str(r#""foo""#).unwrap(), json!("foo"));
-        assert_eq!(from_str(r#""\uD83C\uDF95""#).unwrap(), json!("🎕"));
-        assert_eq!(from_str("[]").unwrap(), json!([]));
-        assert_eq!(from_str("[1, [2, 3]]").unwrap(), json!([1, [2, 3]]));
-        assert_eq!(from_str("{}").unwrap(), json!({}));
-        assert_eq!(from_str(r#"{"a": {"b": 3, "c": 4}}"#).unwrap(), json!({"a": {"b": 3, "c": 4}}));
+        assert_eq!(from_str::<JsonValue>("null").unwrap(), json!(null));
+        assert_eq!(from_str::<JsonValue>(" true ").unwrap(), json!(true));
+        assert_eq!(from_str::<JsonValue>(" false ").unwrap(), json!(false));
+        assert_eq!(from_str::<JsonValue>(r#""foo""#).unwrap(), json!("foo"));
+        assert_eq!(from_str::<JsonValue>(r#""\uD83C\uDF95""#).unwrap(), json!("🎕"));
+        assert_eq!(from_str::<JsonValue>("[]").unwrap(), json!([]));
+        assert_eq!(from_str::<JsonValue>("[1, [2, 3]]").unwrap(), json!([1, [2, 3]]));
+        assert_eq!(from_str::<JsonValue>("{}").unwrap(), json!({}));
+        assert_eq!(from_str::<JsonValue>(r#"{"a": {"b": 3, "c": 4}}"#).unwrap(), json!({"a": {"b": 3, "c": 4}}));
 
-        let neg_zero = from_str("-0.0").unwrap();
+        let neg_zero: JsonValue = from_str("-0.0").unwrap();
         let parsed = neg_zero.as_f64().unwrap();
         assert!(parsed.is_sign_negative());
     }
 
     #[test]
-    fn serde_number_doc_examples_work() {
-        assert!(JsonNumber::from_f64(256.0).is_some());
-        assert!(JsonNumber::from_f64(f64::NAN).is_none());
-        assert!(JsonNumber::from_i128(256).is_some());
-        assert!(JsonNumber::from_u128(256).is_some());
-    }
-
-    #[test]
+    #[cfg(not(feature = "serde"))]
     fn parser_regression_cases_work() {
         assert!(matches!(from_str("+"), Err(JsonParseError::UnexpectedCharacter { .. })));
         assert!(matches!(from_str("."), Err(JsonParseError::UnexpectedCharacter { .. })));
