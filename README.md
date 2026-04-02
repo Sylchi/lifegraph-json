@@ -204,6 +204,42 @@ assert_eq!(value["serde"], "json");
 | `preserve_order` | Alias for indexmap |
 | `raw_value` | Raw value support (requires serde) |
 
+## Serde Compatibility
+
+When the `serde` feature is enabled, `lifegraph-json` provides full serde integration:
+
+```toml
+[dependencies]
+lifegraph-json = { version = "1.0", features = ["serde"] }
+```
+
+```rust
+use lifegraph_json::{from_str, to_string, from_value, to_value, Value};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct Payload {
+    ok: bool,
+    count: u64,
+    tags: Vec<String>,
+}
+
+// Typed deserialization
+let payload: Payload = from_str(r#"{"ok":true,"count":7,"tags":["a","b"]}"#)?;
+
+// Value-based serde
+let value: Value = to_value(&payload)?;
+let reparsed: Payload = from_value(value)?;
+```
+
+**Test Coverage:** The serde integration is tested against:
+- Upstream serde_json test suite (adapted tests)
+- Type-safe serialization/deserialization
+- Error handling parity
+- Raw value support (boxed `Box<RawValue>`)
+
+See `tests/behavioral_parity.rs` and `tests/serde_map_test.rs` for compatibility tests.
+
 ## Safety & Testing
 
 This crate takes correctness and safety seriously:
@@ -213,11 +249,18 @@ This crate takes correctness and safety seriously:
 - **Miri**: Memory safety validation on every PR
 - **Fuzzing**: libFuzzer-based fuzzing for edge cases
 - **JSONTestSuite**: Full compatibility test suite
+- **Serde Compatibility**: Tests adapted from upstream serde_json
 
 ### Running Tests
 ```bash
-# Run all tests
+# Run all tests (default features)
 cargo test
+
+# Run tests with serde feature
+cargo test --features serde
+
+# Run tests with all features
+cargo test --all-features
 
 # Run Miri (memory safety)
 ./scripts/miri.sh
@@ -228,6 +271,12 @@ cargo test
 # Run benchmarks
 cargo bench
 ```
+
+### Test Coverage
+- **34 lib tests** - Core JSON parsing, serialization, and value operations
+- **7 behavioral parity tests** - RawValue, serialization, error handling
+- **3 serde map tests** - Adapted from upstream serde_json
+- **9 integration tests** - Typed serde serialization/deserialization
 
 See [docs/MIRI.md](docs/MIRI.md) and [docs/FUZZING.md](docs/FUZZING.md) for details.
 

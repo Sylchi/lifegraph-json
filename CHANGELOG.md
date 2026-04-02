@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.16 - 2026-04-02
+
+Full serde integration and test coverage release.
+
+### Added
+- Complete serde feature integration with `to_value`, `from_value`, `to_string`, `from_str`, etc.
+- Feature-gated generic versions of all serialization/deserialization functions
+- `Map::swap_remove`, `Map::shift_insert`, `Map::sort_keys` for upstream parity
+- Upstream serde_json test suite (adapted `tests/serde_map_test.rs`)
+- Comprehensive behavioral parity tests for RawValue and serialization
+- Documentation for serde compatibility and test coverage
+
+### Fixed
+- Serde module declarations (`serde_deserialize`, `serde_serialize`, `serde_error`, `raw`)
+- Import paths in serde modules to use `crate::` instead of `crate::value::`, etc.
+- `JsonMapAccess` to properly track pending values for serde deserialization
+- Test type annotations for serde feature compatibility
+
+### Changed
+- `serde` feature is now optional (not in default features)
+- Default features: `["std"]` only, maintaining zero-dependency by default
+
+### Testing
+- 49 tests pass with `--features serde`
+- All upstream serde_json map tests pass
+- Full RawValue support (boxed deserialization)
+
 ## 0.1.15 - 2026-04-01
 
 Benchmark-and-positioning release.
