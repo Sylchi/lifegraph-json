@@ -9,6 +9,10 @@ Benchmark-and-positioning release.
 - clearer README positioning around zero-dependency usage versus serde-driven workflows
 - stronger migration guidance for `serde_json`-style `Value` usage
 
+### Changed
+- serde-compatible parse, serialize, and `Value` conversion paths are now implemented locally instead of delegating to upstream `serde_json`
+- upstream `serde_json` is retained only as a dev/test parity oracle, not a runtime dependency
+
 ## 0.1.14 - 2026-04-01
 
 Parser regression coverage release.

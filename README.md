@@ -1,6 +1,6 @@
 # lifegraph-json
 
-**A tiny zero-dependency JSON crate that can beat `serde_json` by up to 3.78x on the `serde-rs/json-benchmark` corpus, and by ~6x on some structural parse workloads.**
+**A small JSON crate with zero runtime dependencies by default that can beat `serde_json` by up to 3.78x on the `serde-rs/json-benchmark` corpus, and by ~6x on some structural parse workloads.**
 
 `lifegraph-json` is a fast JSON value layer for Rust with **owned**, **borrowed**, **tape**, and **compiled-schema** paths.
 
@@ -23,16 +23,21 @@ If you want a small, fast, hackable JSON layer with aggressive specialized paths
 
 `lifegraph-json` intentionally does **not** depend on `serde` by default.
 
-That means some `serde_json` functionality is intentionally out of scope today, including typed serde-driven conversions and broader serde ecosystem integration. If you need things like:
+When the `serde` feature is enabled, the crate provides its own local implementations for:
 
 - `from_str::<T>`
+- `from_slice::<T>` / `from_reader::<T>`
 - `Serialize` / `Deserialize`
 - `to_value` / `from_value`
-- full serde ecosystem compatibility
+- `to_string`, `to_vec`, `to_writer`, and pretty variants for typed `T`
 
-then you should **keep using `serde_json`**.
+That means the main serde-compatible API surface is available without delegating back to upstream `serde_json`.
 
-If you want a **fast zero-dependency JSON value layer**, use `lifegraph-json`.
+What is still intentionally out of scope is the broader `serde_json` ecosystem surface beyond these APIs. If you need obscure upstream-specific behavior or exact implementation parity in edge cases, evaluate those cases directly.
+
+The crate keeps an upstream `serde_json` copy only in dev/test dependencies as a parity oracle. Runtime parse and serialize behavior is implemented locally.
+
+If you want a **fast zero-runtime-dependency-by-default JSON layer with a local serde-compatible path**, use `lifegraph-json`.
 
 ## What feels drop-in already
 
@@ -51,7 +56,7 @@ If you want a **fast zero-dependency JSON value layer**, use `lifegraph-json`.
 - nested mutable indexing like `value["a"]["b"] = ...`
 - primitive comparisons like `assert_eq!(value["ok"], true)`
 
-In practice this now covers most common `Value`-centric `serde_json` code paths.
+In practice this now covers most common `Value`-centric `serde_json` code paths, plus the main typed serde entry points.
 
 ## Quick migration sketch
 
@@ -114,7 +119,7 @@ Outside the `json-benchmark` corpus, local specialized benchmarks have also show
 - **~3x faster** on indexed repeated lookup over wide objects
 - **up to ~6x faster** on some deep structural parse cases
 
-This crate is best viewed as a **performance-oriented JSON toolkit with a growing `serde_json`-style compatibility layer**.
+This crate is best viewed as a **performance-oriented JSON toolkit with a local `serde_json`-style compatibility layer**.
 
 ## Reader/writer example
 
