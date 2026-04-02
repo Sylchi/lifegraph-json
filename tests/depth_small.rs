@@ -15,16 +15,17 @@ fn test_depth_500() {
 }
 
 #[test]
-fn test_depth_10000() {
-    let mut json = vec![0u8; 10000 * 2 + 1];
-    for i in 0..10000 {
+fn test_depth_limit() {
+    // Create 1001 nested arrays - should hit the depth limit (max is 1000)
+    let mut json = vec![0u8; 1001 * 2 + 1];
+    for i in 0..1001 {
         json[i] = b'[';
-        json[10000 * 2 - i] = b']';
+        json[1001 * 2 - i] = b']';
     }
-    json[10000] = b'1';
+    json[1001] = b'1';
 
     let result = from_slice(&json);
-    eprintln!("10000 depth: {:?}", result);
+    eprintln!("1001 depth: {:?}", result);
     // Should fail with NestingTooDeep
     assert!(format!("{:?}", result).contains("NestingTooDeep"));
 }
