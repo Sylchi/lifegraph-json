@@ -11,11 +11,16 @@ echo ""
 
 # Get the directory where this script lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Install git hooks
 echo "Installing git hooks..."
-git config core.hooksPath "$SCRIPT_DIR/.githooks"
+git config core.hooksPath "$ROOT_DIR/.githooks"
 echo "✓ Git hooks installed (using .githooks directory)"
+echo ""
+echo "  Pre-commit: Format + compile check (~5s)"
+echo "  Pre-push: Release build + tests (~60s)"
+echo "  Post-merge: Quick verification"
 
 # Check Rust version
 echo ""
@@ -35,7 +40,7 @@ else
 fi
 
 # cargo-miri
-if rustup component list | grep -q "miri.*installed"; then
+if rustup component list 2>/dev/null | grep -q "miri.*installed"; then
     echo "✓ Miri installed"
 else
     echo "⚠ Miri not found. Install with: rustup component add miri"
@@ -51,7 +56,7 @@ fi
 # Download JSONTestSuite data (optional)
 echo ""
 echo "JSONTestSuite data..."
-if [[ -d "$SCRIPT_DIR/tests/json_test_suite" ]]; then
+if [[ -d "$ROOT_DIR/tests/json_test_suite" ]]; then
     echo "✓ JSONTestSuite data found"
 else
     echo "⚠ JSONTestSuite data not found."
@@ -71,4 +76,7 @@ echo ""
 echo "For safety validation:"
 echo "  ./scripts/miri.sh    - Run Miri memory safety checks"
 echo "  ./scripts/fuzz.sh    - Run fuzzing"
+echo ""
+echo "For branch workflow:"
+echo "  See docs/BRANCH_PROTECTION.md"
 echo ""

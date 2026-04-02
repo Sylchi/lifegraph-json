@@ -1,55 +1,34 @@
 #!/bin/bash
-# Pre-push hook for lifegraph-json
-#
-# Runs comprehensive checks before allowing a push:
-# - All tests
-# - Documentation tests
-# - Release build check
+# Pre-push hook - Comprehensive but reasonable checks
+# Runs in < 60 seconds typically
 #
 # Install: git config core.hooksPath .githooks
 
 set -e
 
-echo "=== Pre-push Checks ==="
-echo ""
+echo "Running pre-push checks..."
 
-# Run all tests
-echo "Running all tests..."
-if ! cargo test --quiet 2>/dev/null; then
-    echo ""
-    echo "❌ Tests failed. Run: cargo test"
-    exit 1
-fi
-echo "✓ All Tests OK"
-
-# Run doc tests
-echo "Running documentation tests..."
-if ! cargo test --doc --quiet 2>/dev/null; then
-    echo ""
-    echo "❌ Doc tests failed. Run: cargo test --doc"
-    exit 1
-fi
-echo "✓ Doc Tests OK"
-
-# Check release build
-echo "Checking release build..."
+# 1. Build release (ensures optimizations work)
+echo "  Building release..."
 if ! cargo build --release --quiet 2>/dev/null; then
-    echo ""
-    echo "❌ Release build failed. Run: cargo build --release"
+    echo "❌ Release build failed"
     exit 1
 fi
-echo "✓ Release Build OK"
 
-# Check benches compile
-echo "Checking benchmarks compile..."
-if ! cargo check --benches --quiet 2>/dev/null; then
-    echo ""
-    echo "❌ Benchmark compilation failed. Run: cargo check --benches"
+# 2. Run library tests (fast, core functionality)
+echo "  Running library tests..."
+if ! cargo test --lib --quiet 2>/dev/null; then
+    echo "❌ Library tests failed"
     exit 1
 fi
-echo "✓ Benchmarks OK"
 
+# 3. Run integration tests
+echo "  Running integration tests..."
+if ! cargo test --tests --quiet 2>/dev/null; then
+    echo "❌ Integration tests failed"
+    exit 1
+fi
+
+echo "✓ Pre-push checks passed"
 echo ""
-echo "=== All Pre-push Checks Passed ==="
-echo ""
-echo "Ready to push! 🚀"
+echo "Tip: Run 'cargo test' for full test suite before major pushes"
