@@ -29,8 +29,9 @@ ts-rs = { version = "11", optional = true }
 
 [dev-dependencies]
 serde_crate = { package = "serde", version = "1", features = ["derive"] }
+serde_bytes = "0.11"
 # For compatibility testing against serde_json
-serde_json_upstream = { path = "/tmp/serde_json_upstream", default-features = false, features = ["std"] }
+serde_json_upstream = { path = "/tmp/serde_json_upstream", default-features = false, features = ["std", "raw_value"] }
 
 [[bench]]
 name = "json_ops"
