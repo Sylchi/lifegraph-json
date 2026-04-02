@@ -1,0 +1,44 @@
+#!/bin/bash
+# Pre-commit hook for lifegraph-json
+#
+# Runs fast checks before allowing a commit:
+# - Format check
+# - Clippy lints
+# - Fast tests
+#
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "=== Pre-commit Checks ==="
+echo ""
+
+# Check formatting
+echo "Checking formatting..."
+if ! cargo fmt --check 2>/dev/null; then
+    echo ""
+    echo "❌ Code is not formatted. Run: cargo fmt"
+    exit 1
+fi
+echo "✓ Formatting OK"
+
+# Run clippy (fast check)
+echo "Running clippy..."
+if ! cargo clippy --quiet 2>/dev/null; then
+    echo ""
+    echo "❌ Clippy found issues. Run: cargo clippy"
+    exit 1
+fi
+echo "✓ Clippy OK"
+
+# Run fast tests
+echo "Running fast tests..."
+if ! cargo test --lib --quiet 2>/dev/null; then
+    echo ""
+    echo "❌ Tests failed. Run: cargo test --lib"
+    exit 1
+fi
+echo "✓ Tests OK"
+
+echo ""
+echo "=== All Pre-commit Checks Passed ==="

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Post-merge hook for lifegraph-json
+#
+# Runs after git pull/merge to ensure everything still works:
+# - Update dependencies if Cargo.lock changed
+# - Run tests to verify merge didn't break anything
+#
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "=== Post-merge Checks ==="
+echo ""
+
+# Check if Cargo.lock changed
+if git diff HEAD~1 --name-only | grep -q "Cargo.lock"; then
+    echo "Cargo.lock changed, updating dependencies..."
+    cargo fetch --quiet 2>/dev/null || true
+fi
+
+# Run quick test to verify merge
+echo "Running quick verification..."
+if cargo test --lib --quiet 2>/dev/null; then
+    echo "✓ Merge verification OK"
+else
+    echo ""
+    echo "⚠️  Tests failed after merge. You may need to resolve conflicts."
+    echo "   Run: cargo test --lib"
+fi
+
+echo ""
+echo "=== Post-merge Complete ==="

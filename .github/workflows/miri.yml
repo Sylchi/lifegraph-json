@@ -1,0 +1,50 @@
+name: Miri
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  miri:
+    name: Miri Memory Safety
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust nightly
+        uses: dtolnay/rust-action@nightly
+      
+      - name: Install Miri
+        run: |
+          rustup component add miri
+          cargo miri setup
+      
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      
+      - name: Run Miri on library tests
+        run: cargo miri test --lib
+      
+      - name: Run Miri on Unicode tests
+        run: cargo miri test --test unicode
+      
+      - name: Run Miri on behavioral parity tests
+        run: cargo miri test --test behavioral_parity
+      
+      - name: Run Miri on from_value tests
+        run: cargo miri test --test from_value
+      
+      - name: Run Miri on to_string tests
+        run: cargo miri test --test to_string_typed
+      
+      - name: Run Miri on from_str tests
+        run: cargo miri test --test from_str_typed

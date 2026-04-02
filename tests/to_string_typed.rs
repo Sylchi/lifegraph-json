@@ -2,7 +2,7 @@
 
 extern crate serde_crate as serde;
 
-use serde_json::{
+use lifegraph_json::{
     to_string, to_string_pretty, to_vec, to_vec_pretty, to_writer, to_writer_pretty,
 };
 use serde_crate::Serialize;

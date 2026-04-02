@@ -1,10 +1,35 @@
 # lifegraph-json
 
+[![CI](https://github.com/Sylchi/lifegraph-json/actions/workflows/ci.yml/badge.svg)](https://github.com/Sylchi/lifegraph-json/actions/workflows/ci.yml)
+[![Miri](https://github.com/Sylchi/lifegraph-json/actions/workflows/miri.yml/badge.svg)](https://github.com/Sylchi/lifegraph-json/actions/workflows/miri.yml)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/lifegraph-json.svg)](https://crates.io/crates/lifegraph-json)
+[![Documentation](https://docs.rs/lifegraph-json/badge.svg)](https://docs.rs/lifegraph-json)
+
 **A small JSON crate with zero runtime dependencies by default that can beat `serde_json` by up to 3.78x on the `serde-rs/json-benchmark` corpus, and by ~6x on some structural parse workloads.**
 
 `lifegraph-json` is a fast JSON value layer for Rust with **owned**, **borrowed**, **tape**, and **compiled-schema** paths.
 
-## Why this exists
+## Quick Start
+
+```toml
+[dependencies]
+lifegraph-json = "1.0"
+```
+
+```rust
+use lifegraph_json::{json, from_str, to_string, Value};
+
+let value: Value = from_str(r#"{"ok":true,"n":7}"#)?;
+assert_eq!(value["ok"].as_bool(), Some(true));
+assert_eq!(value["n"].as_i64(), Some(7));
+
+let built = json!({"msg": "hello", "items": [1, 2, null]});
+let encoded = to_string(&built)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+## Why This Exists
 
 `serde_json` is fantastic infrastructure, but it optimizes for broad ecosystem integration and typed serde workflows.
 
@@ -18,6 +43,26 @@
 - a compatibility-focused `Value`-style API for easier swapping
 
 If you want a small, fast, hackable JSON layer with aggressive specialized paths, this is the crate.
+
+| Feature | `lifegraph-json` | `serde_json` |
+|---------|-----------------|--------------|
+| Runtime dependencies | **0** (by default) | serde (1+) |
+| Parse speed | **Up to 3.78× faster** | Baseline |
+| Tape parsing | ✅ Yes | ❌ No |
+| Compiled schemas | ✅ Yes | ❌ No |
+| Serde integration | Optional | Built-in |
+| `from_str::<T>` | Via `serde` feature | Native |
+
+**Use `lifegraph-json` when you want:**
+- Maximum parse performance with zero dependencies
+- Fast parse-and-inspect flows without full deserialization
+- Low-allocation parsing with borrowed/tape paths
+- Repeated serialization of known object shapes
+
+**Use `serde_json` when you need:**
+- Full serde ecosystem integration
+- Typed deserialization without optional features
+- Maximum compatibility with existing code
 
 ## Important compatibility note
 
@@ -39,6 +84,21 @@ The crate keeps an upstream `serde_json` copy only in dev/test dependencies as a
 
 If you want a **fast zero-runtime-dependency-by-default JSON layer with a local serde-compatible path**, use `lifegraph-json`.
 
+## Performance
+
+Benchmarked against the [`serde-rs/json-benchmark`](https://github.com/serde-rs/json-benchmark) corpus:
+
+| Path | Geometric Mean | Best Case |
+|------|---------------|-----------|
+| Owned parse | **1.17×** faster | 1.35× (`twitter.json`) |
+| Borrowed parse | **1.55×** faster | 2.37× (`twitter.json`) |
+| Tape parse | **2.93×** faster | **3.78×** (`twitter.json`) |
+| DOM stringify | 1.42× slower | 1.12× faster |
+
+The tape parsing path is the killer feature—up to **3.78× faster** than `serde_json` for parse-and-inspect workloads.
+
+See [benches/](benches/) for detailed benchmarks.
+
 ## What feels drop-in already
 
 `lifegraph-json` includes a growing compatibility-oriented API modeled after common `serde_json` usage:
@@ -58,71 +118,40 @@ If you want a **fast zero-runtime-dependency-by-default JSON layer with a local 
 
 In practice this now covers most common `Value`-centric `serde_json` code paths, plus the main typed serde entry points.
 
-## Quick migration sketch
+## API Modes
 
+`lifegraph-json` provides multiple parsing paths for different use cases:
+
+### Owned Path (Standard)
 ```rust
-// before
-// use serde_json::{json, Value};
-
-// after
-use lifegraph_json::{json, from_str, to_string, Value};
-
-let value: Value = from_str(r#"{"ok":true,"n":7}"#)?;
-assert_eq!(value["ok"].as_bool(), Some(true));
-assert_eq!(value["n"].as_i64(), Some(7));
-
-let built = json!({"msg": "hello", "items": [1, 2, null]});
-let encoded = to_string(&built)?;
-# Ok::<(), Box<dyn std::error::Error>>(())
+use lifegraph_json::{from_str, Value};
+let value: Value = from_str(json)?;  // Full ownership, easy to use
 ```
 
-## Normalized benchmark snapshot
+### Borrowed Path (Zero-Copy Strings)
+```rust
+use lifegraph_json::parse_json_borrowed;
+let value = parse_json_borrowed(json)?;  // Borrows from input, no String allocations
+```
 
-Benchmarked locally in release mode against the official [`serde-rs/json-benchmark`](https://github.com/serde-rs/json-benchmark) data corpus (`canada.json`, `citm_catalog.json`, `twitter.json`, commit `17b13dd`).
+### Tape Path (Fast Parse + Inspect)
+```rust
+use lifegraph_json::parse_json_tape;
+let tape = parse_json_tape(json)?;  // Structural index, fastest parse
+let root = tape.root(json)?;
+let index = root.build_object_index()?;
+```
 
-To normalize out CPU differences, the main takeaway here is the **ratio** versus `serde_json`, not the raw MB/s.
+### Compiled Schema (Repeated Shapes)
+```rust
+use lifegraph_json::CompiledObjectSchema;
+let schema = CompiledObjectSchema::new(&["id", "name", "active"]);
+let json = schema.to_json_string(&[value1, value2, value3])?;
+```
 
-### Best observed ratios on this machine
+## Examples
 
-- **tape parse:** up to **3.78x faster**
-- **borrowed parse:** up to **2.37x faster**
-- **owned parse:** up to **1.35x faster**
-- **DOM stringify:** up to **1.12x faster** on this corpus
-
-### Geometric-mean ratios across the three benchmark files
-
-- **owned parse:** `lifegraph-json` **1.17x** `serde_json`
-- **borrowed parse:** `lifegraph-json` **1.55x** `serde_json`
-- **tape parse:** `lifegraph-json` **2.93x** `serde_json`
-- **DOM stringify:** `serde_json` **1.42x** `lifegraph-json`
-
-### Per-file snapshot
-
-| Corpus | Owned parse | Borrowed parse | Tape parse | DOM stringify |
-|---|---:|---:|---:|---:|
-| `canada.json` | `serde_json` 1.13x | `serde_json` 1.11x | `lifegraph-json` 2.39x | `serde_json` 3.27x |
-| `citm_catalog.json` | `lifegraph-json` 1.33x | `lifegraph-json` 1.76x | `lifegraph-json` 2.79x | `lifegraph-json` 1.12x |
-| `twitter.json` | `lifegraph-json` 1.35x | `lifegraph-json` 2.37x | `lifegraph-json` 3.78x | `lifegraph-json` 1.03x |
-
-So the honest story is:
-
-- `lifegraph-json` is **not faster everywhere**
-- its **tape** and **borrowed** paths are where the strongest wins live
-- stringify is getting better, but `serde_json` still wins overall there
-- if your workload is parse-heavy or parse-and-inspect heavy, `lifegraph-json` gets very interesting
-
-## Performance direction beyond the benchmark corpus
-
-Outside the `json-benchmark` corpus, local specialized benchmarks have also shown larger outliers on structural-heavy workloads, including roughly:
-
-- **~4x faster** on several tape parse / parse+lookup workloads
-- **~3x faster** on indexed repeated lookup over wide objects
-- **up to ~6x faster** on some deep structural parse cases
-
-This crate is best viewed as a **performance-oriented JSON toolkit with a local `serde_json`-style compatibility layer**.
-
-## Reader/writer example
-
+### Reader/Writer
 ```rust
 use lifegraph_json::{from_reader, to_writer};
 use std::io::Cursor;
@@ -130,11 +159,9 @@ use std::io::Cursor;
 let value = from_reader(Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8]))?;
 let mut out = Vec::new();
 to_writer(&mut out, &value)?;
-# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-## Tape parsing example
-
+### Tape Parsing with Compiled Keys
 ```rust
 use lifegraph_json::{parse_json_tape, CompiledTapeKeys, TapeTokenKind};
 
@@ -146,19 +173,16 @@ let indexed = root.with_index(&index);
 let keys = CompiledTapeKeys::new(&["name", "flag"]);
 let kinds = indexed
     .get_compiled_many(&keys)
-    .map(|value| value.unwrap().kind())
+    .map(|v| v.unwrap().kind())
     .collect::<Vec<_>>();
 
 assert_eq!(kinds, vec![TapeTokenKind::String, TapeTokenKind::Bool]);
-# Ok::<(), lifegraph_json::JsonParseError>(())
 ```
 
-## `json!` macro parity
-
-The macro is much closer to `serde_json` in practice, including expression-key object entries:
-
+### JSON Macro
 ```rust
-# use lifegraph_json::json;
+use lifegraph_json::json;
+
 let code = 200;
 let features = vec!["serde", "json"];
 let value = json!({
@@ -168,3 +192,84 @@ let value = json!({
 });
 assert_eq!(value["serde"], "json");
 ```
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| `std` (default) | Standard library support |
+| `alloc` | Allocator support (no std) |
+| `serde` | Serde Serialize/Deserialize support |
+| `indexmap` | Use indexmap for ordered maps |
+| `preserve_order` | Alias for indexmap |
+| `raw_value` | Raw value support (requires serde) |
+
+## Safety & Testing
+
+This crate takes correctness and safety seriously:
+
+### Validation Pipeline
+- **CI**: All tests run on Ubuntu, Windows, and macOS
+- **Miri**: Memory safety validation on every PR
+- **Fuzzing**: libFuzzer-based fuzzing for edge cases
+- **JSONTestSuite**: Full compatibility test suite
+
+### Running Tests
+```bash
+# Run all tests
+cargo test
+
+# Run Miri (memory safety)
+./scripts/miri.sh
+
+# Run fuzzing
+./scripts/fuzz.sh
+
+# Run benchmarks
+cargo bench
+```
+
+See [docs/MIRI.md](docs/MIRI.md) and [docs/FUZZING.md](docs/FUZZING.md) for details.
+
+## Development
+
+### Setup
+```bash
+# Clone and set up
+git clone https://github.com/Sylchi/lifegraph-json
+cd lifegraph-json
+./scripts/setup.sh
+```
+
+### Git Hooks
+This project uses git hooks for quality assurance:
+- **pre-commit**: Format check, clippy, fast tests
+- **pre-push**: Full test suite, release build
+
+Install with: `git config core.hooksPath .githooks`
+
+### Making a Release
+```bash
+./scripts/release.sh 1.0.150
+```
+
+This validates, updates versions, creates a tag, and triggers CI publication.
+
+## License
+
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+## Contribution
+
+Contributions are welcome! Please:
+1. Run `./scripts/setup.sh` to configure hooks
+2. Ensure all tests pass: `cargo test`
+3. Run Miri: `./scripts/miri.sh`
+4. Submit a PR
+
+By contributing, you agree that your work will be dual-licensed under MIT and Apache-2.0.

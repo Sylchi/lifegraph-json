@@ -1,15 +1,15 @@
 [package]
-name = "serde_json"
+name = "lifegraph-json"
 version = "1.0.149"
 edition = "2021"
-license = "MIT"
-description = "JSON crate with zero runtime dependencies by default plus owned, borrowed, tape, and compiled-schema fast paths"
+license = "MIT OR Apache-2.0"
+description = "A zero-dependency JSON crate with owned, borrowed, tape, and compiled-schema fast paths"
 readme = "README.md"
-documentation = "https://docs.rs/lifegraph-json"
 repository = "https://github.com/Sylchi/lifegraph-json"
 homepage = "https://github.com/Sylchi/lifegraph-json"
 keywords = ["json", "parser", "serializer", "zero-copy", "tape"]
 categories = ["encoding", "parser-implementations"]
+rust-version = "1.70"
 
 [features]
 default = ["std"]
@@ -19,6 +19,8 @@ indexmap = []
 raw_value = ["serde"]
 preserve_order = ["indexmap"]
 serde = ["dep:serde_crate"]
+# Compatibility testing feature - allows using this crate as serde_json drop-in
+compat_test = []
 
 [dependencies]
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
@@ -27,4 +29,13 @@ ts-rs = { version = "11", optional = true }
 
 [dev-dependencies]
 serde_crate = { package = "serde", version = "1", features = ["derive"] }
-serde_json_upstream = { path = "/tmp/serde_json_upstream", default-features = false, features = ["std", "raw_value", "preserve_order"] }
+# For compatibility testing against serde_json
+serde_json_upstream = { path = "/tmp/serde_json_upstream", default-features = false, features = ["std"] }
+
+[[bench]]
+name = "json_ops"
+harness = false
+
+[[bench]]
+name = "comparison"
+harness = false

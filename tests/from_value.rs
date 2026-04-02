@@ -2,7 +2,7 @@
 
 extern crate serde_crate as serde;
 
-use serde_json::{from_value, json, to_value, Value};
+use lifegraph_json::{from_value, json, to_value, Value};
 use serde_crate::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
