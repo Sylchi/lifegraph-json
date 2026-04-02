@@ -3,6 +3,21 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
+#[cfg(feature = "serde")]
+mod serde_deserialize;
+#[cfg(feature = "serde")]
+mod serde_serialize;
+#[cfg(feature = "serde")]
+mod serde_error;
+#[cfg(all(feature = "serde", feature = "raw_value"))]
+mod raw;
+
+#[cfg(feature = "serde")]
+pub use serde_deserialize::JsonValueDeserializer;
+#[cfg(feature = "serde")]
+pub use serde_error::{Error, Category};
+#[cfg(all(feature = "serde", feature = "raw_value"))]
+pub use raw::{to_raw_value, RawValue};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonNumber {

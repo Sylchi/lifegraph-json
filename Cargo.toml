@@ -1,9 +1,9 @@
 [package]
-name = "lifegraph-json"
-version = "0.1.15"
+name = "serde_json"
+version = "1.0.149"
 edition = "2021"
 license = "MIT"
-description = "Zero-dependency JSON crate with owned, borrowed, tape, and compiled-schema fast paths"
+description = "JSON crate with zero runtime dependencies by default plus owned, borrowed, tape, and compiled-schema fast paths"
 readme = "README.md"
 documentation = "https://docs.rs/lifegraph-json"
 repository = "https://github.com/Sylchi/lifegraph-json"
@@ -11,4 +11,20 @@ homepage = "https://github.com/Sylchi/lifegraph-json"
 keywords = ["json", "parser", "serializer", "zero-copy", "tape"]
 categories = ["encoding", "parser-implementations"]
 
+[features]
+default = ["std"]
+std = []
+alloc = []
+indexmap = []
+raw_value = ["serde"]
+preserve_order = ["indexmap"]
+serde = ["dep:serde_crate"]
+
 [dependencies]
+serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
+schemars = { version = "0.8", optional = true }
+ts-rs = { version = "11", optional = true }
+
+[dev-dependencies]
+serde_crate = { package = "serde", version = "1", features = ["derive"] }
+serde_json_upstream = { path = "/tmp/serde_json_upstream", default-features = false, features = ["std", "raw_value", "preserve_order"] }
