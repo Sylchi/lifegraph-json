@@ -1,6 +1,5 @@
-use crate::error::JsonParseError;
+use crate::{JsonParseError, JsonValue};
 use crate::tape::{BorrowedJsonValue, JsonTape, TapeToken, TapeTokenKind};
-use crate::value::JsonValue;
 use std::borrow::Cow;
 
 pub struct Parser<'a> {
@@ -9,7 +8,9 @@ pub struct Parser<'a> {
     pub index: usize,
     pub offset: usize,
     pub failed: bool,
-    pub error: Option<crate::error::JsonParseError>,
+    pub error: Option<JsonParseError>,
+    pub depth: usize,
+    max_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -21,6 +22,8 @@ impl<'a> Parser<'a> {
             offset: 0,
             failed: false,
             error: None,
+            depth: 0,
+            max_depth: 10000, // Match serde_json's default
         }
     }
 
@@ -33,6 +36,8 @@ impl<'a> Parser<'a> {
             offset: 0,
             failed: false,
             error: None,
+            depth: 0,
+            max_depth: 10000,
         }
     }
 
@@ -48,19 +53,44 @@ impl<'a> Parser<'a> {
                 offset: 0,
                 failed: true,
                 error: Some(crate::error::JsonParseError::InvalidUtf8),
+                depth: 0,
+                max_depth: 10000,
             },
         }
     }
 
     pub fn parse_value(&mut self) -> Result<JsonValue, JsonParseError> {
         self.skip_whitespace();
+        // Check depth before parsing nested structures
+        match self.peek_byte() {
+            Some(b'[' | b'{') => {
+                eprintln!("DEBUG: depth={} max_depth={}", self.depth, self.max_depth);
+                if self.depth >= self.max_depth {
+                    return Err(JsonParseError::NestingTooDeep {
+                        depth: self.depth,
+                        max: self.max_depth,
+                    });
+                }
+                self.depth += 1;
+            }
+            _ => {}
+        }
+        
         match self.peek_byte() {
             Some(b'n') => self.parse_literal(b"null", JsonValue::Null),
             Some(b't') => self.parse_literal(b"true", JsonValue::Bool(true)),
             Some(b'f') => self.parse_literal(b"false", JsonValue::Bool(false)),
             Some(b'"') => Ok(JsonValue::String(self.parse_string()?)),
-            Some(b'[') => self.parse_array(),
-            Some(b'{') => self.parse_object(),
+            Some(b'[') => {
+                let result = self.parse_array();
+                self.depth -= 1;
+                result
+            }
+            Some(b'{') => {
+                let result = self.parse_object();
+                self.depth -= 1;
+                result
+            }
             Some(b'-' | b'0'..=b'9') => self.parse_number().map(JsonValue::Number),
             Some(found) => Err(JsonParseError::UnexpectedCharacter {
                 index: self.index,
@@ -72,13 +102,35 @@ impl<'a> Parser<'a> {
 
     pub fn parse_value_borrowed(&mut self) -> Result<BorrowedJsonValue<'a>, JsonParseError> {
         self.skip_whitespace();
+        // Check depth before parsing nested structures
+        match self.peek_byte() {
+            Some(b'[' | b'{') => {
+                if self.depth >= self.max_depth {
+                    return Err(JsonParseError::NestingTooDeep {
+                        depth: self.depth,
+                        max: self.max_depth,
+                    });
+                }
+                self.depth += 1;
+            }
+            _ => {}
+        }
+        
         match self.peek_byte() {
             Some(b'n') => self.parse_literal_borrowed(b"null", BorrowedJsonValue::Null),
             Some(b't') => self.parse_literal_borrowed(b"true", BorrowedJsonValue::Bool(true)),
             Some(b'f') => self.parse_literal_borrowed(b"false", BorrowedJsonValue::Bool(false)),
             Some(b'"') => Ok(BorrowedJsonValue::String(self.parse_string_borrowed()?)),
-            Some(b'[') => self.parse_array_borrowed(),
-            Some(b'{') => self.parse_object_borrowed(),
+            Some(b'[') => {
+                let result = self.parse_array_borrowed();
+                self.depth -= 1;
+                result
+            }
+            Some(b'{') => {
+                let result = self.parse_object_borrowed();
+                self.depth -= 1;
+                result
+            }
             Some(b'-' | b'0'..=b'9') => self.parse_number().map(BorrowedJsonValue::Number),
             Some(found) => Err(JsonParseError::UnexpectedCharacter {
                 index: self.index,
@@ -212,6 +264,15 @@ impl<'a> Parser<'a> {
         tokens: &mut Vec<TapeToken>,
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
+        // Check depth before parsing
+        if self.depth >= self.max_depth {
+            return Err(JsonParseError::NestingTooDeep {
+                depth: self.depth,
+                max: self.max_depth,
+            });
+        }
+        self.depth += 1;
+        
         let start = self.index;
         self.consume_byte(b'[')?;
         let token_index = tokens.len();
@@ -224,6 +285,7 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.try_consume_byte(b']') {
             tokens[token_index].end = self.index;
+            self.depth -= 1;
             return Ok(token_index);
         }
         loop {
@@ -241,6 +303,8 @@ impl<'a> Parser<'a> {
             }
             self.skip_whitespace();
         }
+        tokens[token_index].end = self.index;
+        self.depth -= 1;
         Ok(token_index)
     }
 
@@ -327,6 +391,15 @@ impl<'a> Parser<'a> {
         tokens: &mut Vec<TapeToken>,
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
+        // Check depth before parsing
+        if self.depth >= self.max_depth {
+            return Err(JsonParseError::NestingTooDeep {
+                depth: self.depth,
+                max: self.max_depth,
+            });
+        }
+        self.depth += 1;
+        
         let start = self.index;
         self.consume_byte(b'{')?;
         let token_index = tokens.len();
@@ -339,6 +412,7 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.try_consume_byte(b'}') {
             tokens[token_index].end = self.index;
+            self.depth -= 1;
             return Ok(token_index);
         }
         loop {
@@ -370,6 +444,8 @@ impl<'a> Parser<'a> {
             }
             self.skip_whitespace();
         }
+        tokens[token_index].end = self.index;
+        self.depth -= 1;
         Ok(token_index)
     }
 

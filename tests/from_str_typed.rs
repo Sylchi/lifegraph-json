@@ -15,8 +15,7 @@ struct Payload {
 
 #[test]
 fn typed_from_str_uses_lifegraph_parser_path() {
-    let payload: Payload =
-        from_str(r#"{"ok":true,"count":7,"tags":["fast","compat"]}"#).unwrap();
+    let payload: Payload = from_str(r#"{"ok":true,"count":7,"tags":["fast","compat"]}"#).unwrap();
     assert_eq!(
         payload,
         Payload {
@@ -29,8 +28,7 @@ fn typed_from_str_uses_lifegraph_parser_path() {
 
 #[test]
 fn typed_from_slice_and_reader_work() {
-    let payload: Payload =
-        from_slice(br#"{"ok":false,"count":3,"tags":["slice"]}"#).unwrap();
+    let payload: Payload = from_slice(br#"{"ok":false,"count":3,"tags":["slice"]}"#).unwrap();
     assert_eq!(payload.count, 3);
 
     let payload: Payload = from_reader(std::io::Cursor::new(

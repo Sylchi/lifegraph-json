@@ -1,6 +1,9 @@
 use crate::serde_error::Error;
 use crate::{JsonParseError, JsonValue};
-use serde_crate::de::{value::StringDeserializer, DeserializeSeed, MapAccess, Deserializer as SerdeDeserializer, Visitor};
+use serde_crate::de::{
+    value::StringDeserializer, DeserializeSeed, Deserializer as SerdeDeserializer, MapAccess,
+    Visitor,
+};
 use serde_crate::ser::SerializeStruct;
 use serde_crate::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -297,7 +300,9 @@ impl<'de: 'a, 'a> Deserialize<'de> for &'a RawValue {
                 V: MapAccess<'de>,
             {
                 if visitor.next_key::<RawKey>()?.is_none() {
-                    return Err(<V::Error as serde_crate::de::Error>::custom("invalid raw value"));
+                    return Err(<V::Error as serde_crate::de::Error>::custom(
+                        "invalid raw value",
+                    ));
                 }
                 visitor.next_value_seed(ReferenceFromString)
             }
@@ -326,7 +331,9 @@ impl<'de> Deserialize<'de> for Box<RawValue> {
                 V: MapAccess<'de>,
             {
                 if visitor.next_key::<RawKey>()?.is_none() {
-                    return Err(<V::Error as serde_crate::de::Error>::custom("invalid raw value"));
+                    return Err(<V::Error as serde_crate::de::Error>::custom(
+                        "invalid raw value",
+                    ));
                 }
                 visitor.next_value_seed(BoxedFromString)
             }
@@ -341,5 +348,6 @@ where
     T: Serialize + ?Sized,
 {
     let json = crate::to_string(value)?;
-    RawValue::from_string(json).map_err(|_| crate::serde_error::Error::custom("invalid JSON from serialization"))
+    RawValue::from_string(json)
+        .map_err(|_| crate::serde_error::Error::custom("invalid JSON from serialization"))
 }

@@ -3,21 +3,21 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
+#[cfg(all(feature = "serde", feature = "raw_value"))]
+mod raw;
 #[cfg(feature = "serde")]
 mod serde_deserialize;
 #[cfg(feature = "serde")]
-mod serde_serialize;
-#[cfg(feature = "serde")]
 mod serde_error;
-#[cfg(all(feature = "serde", feature = "raw_value"))]
-mod raw;
+#[cfg(feature = "serde")]
+mod serde_serialize;
 
+#[cfg(all(feature = "serde", feature = "raw_value"))]
+pub use raw::{to_raw_value, RawValue};
 #[cfg(feature = "serde")]
 pub use serde_deserialize::JsonValueDeserializer;
 #[cfg(feature = "serde")]
-pub use serde_error::{Error, Category};
-#[cfg(all(feature = "serde", feature = "raw_value"))]
-pub use raw::{to_raw_value, RawValue};
+pub use serde_error::{Category, Error};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonNumber {
@@ -25,7 +25,6 @@ pub enum JsonNumber {
     U64(u64),
     F64(f64),
 }
-
 
 impl JsonNumber {
     pub fn from_i128(value: i128) -> Option<Self> {
@@ -145,11 +144,17 @@ impl Map {
     }
 
     pub fn get(&self, key: &str) -> Option<&JsonValue> {
-        self.0.iter().find(|(candidate, _)| candidate == key).map(|(_, value)| value)
+        self.0
+            .iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value)
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
-        self.0.iter_mut().find(|(candidate, _)| candidate == key).map(|(_, value)| value)
+        self.0
+            .iter_mut()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
@@ -200,7 +205,12 @@ impl Map {
             .map(|index| self.0.swap_remove(index).1)
     }
 
-    pub fn shift_insert(&mut self, index: usize, key: String, value: JsonValue) -> Option<JsonValue> {
+    pub fn shift_insert(
+        &mut self,
+        index: usize,
+        key: String,
+        value: JsonValue,
+    ) -> Option<JsonValue> {
         if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
             return Some(std::mem::replace(existing, value));
         }
@@ -225,7 +235,6 @@ impl From<Vec<(String, JsonValue)>> for Map {
         Self(value)
     }
 }
-
 
 impl std::iter::FromIterator<(String, JsonValue)> for Map {
     fn from_iter<T: IntoIterator<Item = (String, JsonValue)>>(iter: T) -> Self {
@@ -339,14 +348,37 @@ pub enum JsonParseError {
     InvalidUtf8,
     UnexpectedEnd,
     UnexpectedTrailingCharacters(usize),
-    UnexpectedCharacter { index: usize, found: char },
-    InvalidLiteral { index: usize },
-    InvalidNumber { index: usize },
-    InvalidEscape { index: usize },
-    InvalidUnicodeEscape { index: usize },
-    InvalidUnicodeScalar { index: usize },
-    ExpectedColon { index: usize },
-    ExpectedCommaOrEnd { index: usize, context: &'static str },
+    UnexpectedCharacter {
+        index: usize,
+        found: char,
+    },
+    InvalidLiteral {
+        index: usize,
+    },
+    InvalidNumber {
+        index: usize,
+    },
+    InvalidEscape {
+        index: usize,
+    },
+    InvalidUnicodeEscape {
+        index: usize,
+    },
+    InvalidUnicodeScalar {
+        index: usize,
+    },
+    ExpectedColon {
+        index: usize,
+    },
+    ExpectedCommaOrEnd {
+        index: usize,
+        context: &'static str,
+    },
+    /// JSON nesting depth exceeds the maximum allowed (10000)
+    NestingTooDeep {
+        depth: usize,
+        max: usize,
+    },
 }
 
 impl fmt::Display for JsonError {
@@ -384,6 +416,9 @@ impl fmt::Display for JsonParseError {
             Self::ExpectedCommaOrEnd { index, context } => {
                 write!(f, "expected ',' or end of {context} at byte {index}")
             }
+            Self::NestingTooDeep { depth, max } => {
+                write!(f, "JSON nesting depth {} exceeds maximum {}", depth, max)
+            }
         }
     }
 }
@@ -397,7 +432,6 @@ impl fmt::Display for JsonNumber {
         }
     }
 }
-
 
 impl From<i64> for JsonNumber {
     fn from(value: i64) -> Self {
@@ -415,7 +449,6 @@ impl From<u64> for JsonNumber {
     }
 }
 
-
 impl std::error::Error for JsonError {}
 impl std::error::Error for JsonParseError {}
 
@@ -425,7 +458,8 @@ impl JsonValue {
             entries
                 .into_iter()
                 .map(|(key, value)| (key.into(), value))
-                 .collect::<Vec<_>>().into(),
+                .collect::<Vec<_>>()
+                .into(),
         )
     }
 
@@ -947,7 +981,6 @@ where
     }
 }
 
-
 impl<K, V> std::iter::FromIterator<(K, V)> for JsonValue
 where
     K: Into<String>,
@@ -957,7 +990,8 @@ where
         Self::Object(
             iter.into_iter()
                 .map(|(key, value)| (key.into(), value.into()))
-                 .collect::<Vec<_>>().into(),
+                .collect::<Vec<_>>()
+                .into(),
         )
     }
 }
@@ -978,7 +1012,9 @@ pub fn escape_json_string(input: &str) -> String {
 }
 
 pub fn parse_json(input: &str) -> Result<JsonValue, JsonParseError> {
+    eprintln!("parse_json called with {} bytes", input.len());
     let mut parser = Parser::new(input);
+    eprintln!("Parser created with max_depth={}", parser.max_depth);
     let value = parser.parse_value()?;
     parser.skip_whitespace();
     if parser.is_eof() {
@@ -1087,7 +1123,9 @@ where
     T: serde_crate::Serialize + ?Sized,
 {
     let json_value = to_value(value)?;
-    json_value.to_json_string().map_err(crate::serde_error::json_error_to_serde)
+    json_value
+        .to_json_string()
+        .map_err(crate::serde_error::json_error_to_serde)
 }
 
 #[cfg(not(feature = "serde"))]
@@ -1120,7 +1158,12 @@ where
     W: Write,
 {
     let bytes = to_vec(value)?;
-    writer.write_all(&bytes).map_err(|_| crate::serde_error::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "write failed")))
+    writer.write_all(&bytes).map_err(|_| {
+        crate::serde_error::Error::io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "write failed",
+        ))
+    })
 }
 
 #[cfg(not(feature = "serde"))]
@@ -1172,7 +1215,12 @@ where
     W: Write,
 {
     let bytes = to_vec_pretty(value)?;
-    writer.write_all(&bytes).map_err(|_| crate::serde_error::Error::io(std::io::Error::new(std::io::ErrorKind::Other, "write failed")))
+    writer.write_all(&bytes).map_err(|_| {
+        crate::serde_error::Error::io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "write failed",
+        ))
+    })
 }
 
 #[cfg(not(feature = "serde"))]
@@ -1306,7 +1354,11 @@ impl TapeObjectIndex {
         self.get_hashed(object, hash_key(key.as_bytes()), key)
     }
 
-    pub fn get_compiled<'a>(&self, object: TapeValue<'a>, key: &CompiledTapeKey) -> Option<TapeValue<'a>> {
+    pub fn get_compiled<'a>(
+        &self,
+        object: TapeValue<'a>,
+        key: &CompiledTapeKey,
+    ) -> Option<TapeValue<'a>> {
         self.get_hashed(object, key.hash, &key.key)
     }
 
@@ -1380,7 +1432,6 @@ impl<'a> IndexedTapeObject<'a> {
         keys.iter().map(|key| self.get_compiled(key))
     }
 }
-
 
 impl fmt::Display for JsonValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1460,7 +1511,10 @@ fn object_get<'a>(entries: &'a [(String, JsonValue)], key: &str) -> Option<&'a J
         .map(|(_, value)| value)
 }
 
-fn object_get_mut<'a>(entries: &'a mut Vec<(String, JsonValue)>, key: &str) -> Option<&'a mut JsonValue> {
+fn object_get_mut<'a>(
+    entries: &'a mut Vec<(String, JsonValue)>,
+    key: &str,
+) -> Option<&'a mut JsonValue> {
     entries
         .iter_mut()
         .find(|(candidate, _)| candidate == key)
@@ -1492,7 +1546,12 @@ fn array_index_or_panic(value: &mut JsonValue, index: usize) -> &mut JsonValue {
     match value {
         JsonValue::Array(values) => {
             let len = values.len();
-            values.get_mut(index).unwrap_or_else(|| panic!("cannot access index {} of JSON array of length {}", index, len))
+            values.get_mut(index).unwrap_or_else(|| {
+                panic!(
+                    "cannot access index {} of JSON array of length {}",
+                    index, len
+                )
+            })
         }
         JsonValue::Null => panic!("cannot access index {} of JSON null", index),
         JsonValue::Bool(_) => panic!("cannot access index {} of JSON boolean", index),
@@ -1582,7 +1641,7 @@ impl PartialEq<str> for JsonValue {
 
 impl PartialEq<&str> for JsonValue {
     fn eq(&self, other: &&str) -> bool {
-        eq_str(self, *other)
+        eq_str(self, other)
     }
 }
 
@@ -1594,7 +1653,7 @@ impl PartialEq<JsonValue> for str {
 
 impl PartialEq<JsonValue> for &str {
     fn eq(&self, other: &JsonValue) -> bool {
-        eq_str(other, *self)
+        eq_str(other, self)
     }
 }
 
@@ -1651,7 +1710,10 @@ partialeq_numeric! {
 #[macro_export]
 macro_rules! json_unexpected {
     ($unexpected:tt) => {
-        compile_error!(concat!("unexpected token in json! macro: ", stringify!($unexpected)))
+        compile_error!(concat!(
+            "unexpected token in json! macro: ",
+            stringify!($unexpected)
+        ))
     };
     () => {
         compile_error!("unexpected end of json! macro invocation")
@@ -1796,7 +1858,11 @@ fn write_indent(out: &mut Vec<u8>, depth: usize) {
     }
 }
 
-fn write_json_value_pretty(out: &mut Vec<u8>, value: &JsonValue, depth: usize) -> Result<(), JsonError> {
+fn write_json_value_pretty(
+    out: &mut Vec<u8>,
+    value: &JsonValue,
+    depth: usize,
+) -> Result<(), JsonError> {
     match value {
         JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {
             write_json_value(out, value)
@@ -2142,6 +2208,8 @@ struct Parser<'a> {
     input: &'a str,
     bytes: &'a [u8],
     index: usize,
+    depth: usize,
+    max_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -2150,6 +2218,8 @@ impl<'a> Parser<'a> {
             input,
             bytes: input.as_bytes(),
             index: 0,
+            depth: 0,
+            max_depth: 10000,
         }
     }
 
@@ -2173,7 +2243,19 @@ impl<'a> Parser<'a> {
 
     fn parse_value_borrowed(&mut self) -> Result<BorrowedJsonValue<'a>, JsonParseError> {
         self.skip_whitespace();
-        match self.peek_byte() {
+        // Check depth before parsing nested structures
+        let is_nested = matches!(self.peek_byte(), Some(b'[' | b'{'));
+        if is_nested {
+            if self.depth >= self.max_depth {
+                return Err(JsonParseError::NestingTooDeep {
+                    depth: self.depth,
+                    max: self.max_depth,
+                });
+            }
+            self.depth += 1;
+        }
+
+        let result = match self.peek_byte() {
             Some(b'n') => self.parse_literal_borrowed(b"null", BorrowedJsonValue::Null),
             Some(b't') => self.parse_literal_borrowed(b"true", BorrowedJsonValue::Bool(true)),
             Some(b'f') => self.parse_literal_borrowed(b"false", BorrowedJsonValue::Bool(false)),
@@ -2186,7 +2268,14 @@ impl<'a> Parser<'a> {
                 found: found as char,
             }),
             None => Err(JsonParseError::UnexpectedEnd),
+        };
+
+        // Decrement depth for nested structures
+        if is_nested {
+            self.depth -= 1;
         }
+
+        result
     }
 
     fn parse_tape_value(
@@ -2195,7 +2284,19 @@ impl<'a> Parser<'a> {
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
         self.skip_whitespace();
-        match self.peek_byte() {
+        // Check depth before parsing nested structures
+        let is_nested = matches!(self.peek_byte(), Some(b'[' | b'{'));
+        if is_nested {
+            if self.depth >= self.max_depth {
+                return Err(JsonParseError::NestingTooDeep {
+                    depth: self.depth,
+                    max: self.max_depth,
+                });
+            }
+            self.depth += 1;
+        }
+
+        let result = match self.peek_byte() {
             Some(b'n') => self.parse_tape_literal(tokens, parent, b"null", TapeTokenKind::Null),
             Some(b't') => self.parse_tape_literal(tokens, parent, b"true", TapeTokenKind::Bool),
             Some(b'f') => self.parse_tape_literal(tokens, parent, b"false", TapeTokenKind::Bool),
@@ -2208,7 +2309,14 @@ impl<'a> Parser<'a> {
                 found: found as char,
             }),
             None => Err(JsonParseError::UnexpectedEnd),
+        };
+
+        // Decrement depth for nested structures
+        if is_nested {
+            self.depth -= 1;
         }
+
+        result
     }
 
     fn parse_literal(
@@ -2261,10 +2369,20 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_array(&mut self) -> Result<JsonValue, JsonParseError> {
+        // Check depth before parsing
+        if self.depth >= self.max_depth {
+            return Err(JsonParseError::NestingTooDeep {
+                depth: self.depth,
+                max: self.max_depth,
+            });
+        }
+        self.depth += 1;
+
         self.consume_byte(b'[')?;
         self.skip_whitespace();
         let mut values = Vec::new();
         if self.try_consume_byte(b']') {
+            self.depth -= 1;
             return Ok(JsonValue::Array(values));
         }
         loop {
@@ -2281,6 +2399,7 @@ impl<'a> Parser<'a> {
             }
             self.skip_whitespace();
         }
+        self.depth -= 1;
         Ok(JsonValue::Array(values))
     }
 
@@ -2346,10 +2465,20 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_object(&mut self) -> Result<JsonValue, JsonParseError> {
+        // Check depth before parsing
+        if self.depth >= self.max_depth {
+            return Err(JsonParseError::NestingTooDeep {
+                depth: self.depth,
+                max: self.max_depth,
+            });
+        }
+        self.depth += 1;
+
         self.consume_byte(b'{')?;
         self.skip_whitespace();
         let mut entries = Map::new();
         if self.try_consume_byte(b'}') {
+            self.depth -= 1;
             return Ok(JsonValue::Object(entries));
         }
         loop {
@@ -2381,6 +2510,7 @@ impl<'a> Parser<'a> {
             }
             self.skip_whitespace();
         }
+        self.depth -= 1;
         Ok(JsonValue::Object(entries))
     }
 
@@ -2993,7 +3123,10 @@ mod tests {
             .get_compiled_many(&keys)
             .map(|value| value.map(|value| value.kind()))
             .collect::<Vec<_>>();
-        assert_eq!(got, vec![Some(TapeTokenKind::String), Some(TapeTokenKind::Bool), None]);
+        assert_eq!(
+            got,
+            vec![Some(TapeTokenKind::String), Some(TapeTokenKind::Bool), None]
+        );
     }
 
     #[test]
@@ -3006,25 +3139,41 @@ mod tests {
         assert_eq!(value["msg"].as_str(), Some("hello"));
         assert_eq!(value["items"][1].as_u64(), Some(2));
         assert!(value["missing"].is_null());
-        assert_eq!(to_string(&value).unwrap(), r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#);
-        assert_eq!(from_slice(br#"[1,true,"x"]"#).unwrap()[2].as_str(), Some("x"));
-        assert_eq!(to_vec(&value).unwrap(), value.to_json_string().unwrap().into_bytes());
+        assert_eq!(
+            to_string(&value).unwrap(),
+            r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#
+        );
+        assert_eq!(
+            from_slice(br#"[1,true,"x"]"#).unwrap()[2].as_str(),
+            Some("x")
+        );
+        assert_eq!(
+            to_vec(&value).unwrap(),
+            value.to_json_string().unwrap().into_bytes()
+        );
     }
 
     #[test]
     #[cfg(feature = "serde")]
     fn serde_style_convenience_api_works() {
-        let value: JsonValue = from_str(r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#).unwrap();
+        let value: JsonValue =
+            from_str(r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#).unwrap();
         assert!(value.is_object());
         assert_eq!(value["ok"].as_bool(), Some(true));
         assert_eq!(value["n"].as_i64(), Some(7));
         assert_eq!(value["msg"].as_str(), Some("hello"));
         assert_eq!(value["items"][1].as_u64(), Some(2));
         assert!(value["missing"].is_null());
-        assert_eq!(to_string(&value).unwrap(), r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#);
+        assert_eq!(
+            to_string(&value).unwrap(),
+            r#"{"ok":true,"n":7,"items":[1,2,3],"msg":"hello"}"#
+        );
         let arr: JsonValue = from_slice(br#"[1,true,"x"]"#).unwrap();
         assert_eq!(arr[2].as_str(), Some("x"));
-        assert_eq!(to_vec(&value).unwrap(), value.to_json_string().unwrap().into_bytes());
+        assert_eq!(
+            to_vec(&value).unwrap(),
+            value.to_json_string().unwrap().into_bytes()
+        );
     }
 
     #[test]
@@ -3039,17 +3188,29 @@ mod tests {
     #[test]
     #[cfg(not(feature = "serde"))]
     fn from_slice_rejects_invalid_utf8() {
-        assert!(matches!(from_slice(&[0xff]), Err(JsonParseError::InvalidUtf8)));
+        assert!(matches!(
+            from_slice(&[0xff]),
+            Err(JsonParseError::InvalidUtf8)
+        ));
     }
 
     #[test]
     #[cfg(not(feature = "serde"))]
     fn pointer_take_and_pretty_helpers_work() {
         let mut value = from_str(r#"{"a":{"b":[10,20,{"~key/":"x"}]}}"#).unwrap();
-        assert_eq!(value.pointer("/a/b/1").and_then(JsonValue::as_u64), Some(20));
-        assert_eq!(value.pointer("/a/b/2/~0key~1").and_then(JsonValue::as_str), Some("x"));
+        assert_eq!(
+            value.pointer("/a/b/1").and_then(JsonValue::as_u64),
+            Some(20)
+        );
+        assert_eq!(
+            value.pointer("/a/b/2/~0key~1").and_then(JsonValue::as_str),
+            Some("x")
+        );
         *value.pointer_mut("/a/b/0").unwrap() = JsonValue::from(99u64);
-        assert_eq!(value.pointer("/a/b/0").and_then(JsonValue::as_u64), Some(99));
+        assert_eq!(
+            value.pointer("/a/b/0").and_then(JsonValue::as_u64),
+            Some(99)
+        );
 
         let taken = value.pointer_mut("/a/b/2").unwrap().take();
         assert!(value.pointer("/a/b/2").unwrap().is_null());
@@ -3065,14 +3226,23 @@ mod tests {
     #[test]
     #[cfg(not(feature = "serde"))]
     fn reader_writer_and_collection_helpers_work() {
-        let value = from_reader(std::io::Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8])).unwrap();
+        let value = from_reader(std::io::Cursor::new(
+            br#"{"a":1,"b":[true,false]}"# as &[u8],
+        ))
+        .unwrap();
         assert_eq!(value["a"].as_u64(), Some(1));
         assert_eq!(value["b"].len(), 2);
-        assert_eq!(value["b"].get_index(1).and_then(JsonValue::as_bool), Some(false));
+        assert_eq!(
+            value["b"].get_index(1).and_then(JsonValue::as_bool),
+            Some(false)
+        );
 
         let mut out = Vec::new();
         to_writer(&mut out, &value).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), value.to_json_string().unwrap());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            value.to_json_string().unwrap()
+        );
 
         let object = JsonValue::from_iter([("x", 1u64), ("y", 2u64)]);
         assert_eq!(object["x"].as_u64(), Some(1));
@@ -3083,14 +3253,23 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn reader_writer_and_collection_helpers_work() {
-        let value: JsonValue = from_reader(std::io::Cursor::new(br#"{"a":1,"b":[true,false]}"# as &[u8])).unwrap();
+        let value: JsonValue = from_reader(std::io::Cursor::new(
+            br#"{"a":1,"b":[true,false]}"# as &[u8],
+        ))
+        .unwrap();
         assert_eq!(value["a"].as_u64(), Some(1));
         assert_eq!(value["b"].len(), 2);
-        assert_eq!(value["b"].get_index(1).and_then(JsonValue::as_bool), Some(false));
+        assert_eq!(
+            value["b"].get_index(1).and_then(JsonValue::as_bool),
+            Some(false)
+        );
 
         let mut out = Vec::new();
         to_writer(&mut out, &value).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), value.to_json_string().unwrap());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            value.to_json_string().unwrap()
+        );
 
         let object = JsonValue::from_iter([("x", 1u64), ("y", 2u64)]);
         assert_eq!(object["x"].as_u64(), Some(1));
@@ -3098,7 +3277,7 @@ mod tests {
         assert_eq!(array.get_index(2).and_then(JsonValue::as_u64), Some(3));
     }
 
-        #[test]
+    #[test]
     fn positive_signed_integer_construction_matches_serde_style() {
         let value = JsonValue::from(64i64);
         assert!(value.is_i64());
@@ -3135,7 +3314,7 @@ mod tests {
         assert_eq!(value["serde"], "json");
     }
 
-#[test]
+    #[test]
     fn primitive_partial_eq_parity_works() {
         let value = json!({"n": 1, "f": 2.5, "b": true, "s": "x"});
         assert_eq!(value["n"], 1);
@@ -3152,9 +3331,19 @@ mod tests {
         assert_eq!(value.as_object().unwrap().len(), 2);
         assert_eq!(value["a"].as_array().unwrap().len(), 1);
         value.sort_all_objects();
-        let root_keys = value.as_object().unwrap().iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>();
+        let root_keys = value
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k.as_str())
+            .collect::<Vec<_>>();
         assert_eq!(root_keys, vec!["a", "z"]);
-        let nested_keys = value["z"].as_object().unwrap().iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>();
+        let nested_keys = value["z"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k.as_str())
+            .collect::<Vec<_>>();
         assert_eq!(nested_keys, vec!["a", "b"]);
     }
 
@@ -3162,9 +3351,27 @@ mod tests {
     fn generic_get_and_get_mut_index_parity_work() {
         let mut value = json!({"obj": {"x": 1}, "arr": [10, 20, 30]});
         let key = String::from("obj");
-        assert_eq!(value.get("obj").and_then(|v| v.get("x")).and_then(JsonValue::as_u64), Some(1));
-        assert_eq!(value.get(&key).and_then(|v| v.get("x")).and_then(JsonValue::as_u64), Some(1));
-        assert_eq!(value.get("arr").and_then(|v| v.get(1)).and_then(JsonValue::as_u64), Some(20));
+        assert_eq!(
+            value
+                .get("obj")
+                .and_then(|v| v.get("x"))
+                .and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            value
+                .get(&key)
+                .and_then(|v| v.get("x"))
+                .and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            value
+                .get("arr")
+                .and_then(|v| v.get(1))
+                .and_then(JsonValue::as_u64),
+            Some(20)
+        );
         *value.get_mut("arr").unwrap().get_mut(2).unwrap() = JsonValue::from(99u64);
         assert_eq!(value["arr"][2].as_u64(), Some(99));
     }
@@ -3184,7 +3391,10 @@ mod tests {
 
         let mut value = JsonValue::Null;
         value["a"]["b"]["c"] = JsonValue::from(true);
-        assert_eq!(value.pointer("/a/b/c").and_then(JsonValue::as_bool), Some(true));
+        assert_eq!(
+            value.pointer("/a/b/c").and_then(JsonValue::as_bool),
+            Some(true)
+        );
 
         value["arr"] = json!([1, 2, 3]);
         value["arr"][1] = JsonValue::from(9u64);
@@ -3199,7 +3409,11 @@ mod tests {
         assert_eq!(map.get("x").and_then(JsonValue::as_u64), Some(1));
         *map.get_mut("x").unwrap() = JsonValue::from(2u64);
         assert_eq!(map.get("x").and_then(JsonValue::as_u64), Some(2));
-        assert_eq!(map.insert("x".to_owned(), JsonValue::from(3u64)).and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(
+            map.insert("x".to_owned(), JsonValue::from(3u64))
+                .and_then(|v| v.as_u64()),
+            Some(2)
+        );
         assert_eq!(map.remove("x").and_then(|v| v.as_u64()), Some(3));
         assert!(!map.contains_key("x"));
     }
@@ -3279,7 +3493,10 @@ mod tests {
 
         let v = json!({ "a": 1, "b": 2.2, "c": -3, "d": "4" });
         assert_eq!(v["a"].as_number(), Some(&JsonNumber::from(1u64)));
-        assert_eq!(v["b"].as_number(), Some(&JsonNumber::from_f64(2.2).unwrap()));
+        assert_eq!(
+            v["b"].as_number(),
+            Some(&JsonNumber::from_f64(2.2).unwrap())
+        );
         assert_eq!(v["c"].as_number(), Some(&JsonNumber::from(-3i64)));
         assert_eq!(v["d"].as_number(), None);
     }
@@ -3344,11 +3561,20 @@ mod tests {
         assert_eq!(from_str::<JsonValue>(" true ").unwrap(), json!(true));
         assert_eq!(from_str::<JsonValue>(" false ").unwrap(), json!(false));
         assert_eq!(from_str::<JsonValue>(r#""foo""#).unwrap(), json!("foo"));
-        assert_eq!(from_str::<JsonValue>(r#""\uD83C\uDF95""#).unwrap(), json!("🎕"));
+        assert_eq!(
+            from_str::<JsonValue>(r#""\uD83C\uDF95""#).unwrap(),
+            json!("🎕")
+        );
         assert_eq!(from_str::<JsonValue>("[]").unwrap(), json!([]));
-        assert_eq!(from_str::<JsonValue>("[1, [2, 3]]").unwrap(), json!([1, [2, 3]]));
+        assert_eq!(
+            from_str::<JsonValue>("[1, [2, 3]]").unwrap(),
+            json!([1, [2, 3]])
+        );
         assert_eq!(from_str::<JsonValue>("{}").unwrap(), json!({}));
-        assert_eq!(from_str::<JsonValue>(r#"{"a": {"b": 3, "c": 4}}"#).unwrap(), json!({"a": {"b": 3, "c": 4}}));
+        assert_eq!(
+            from_str::<JsonValue>(r#"{"a": {"b": 3, "c": 4}}"#).unwrap(),
+            json!({"a": {"b": 3, "c": 4}})
+        );
 
         let neg_zero: JsonValue = from_str("-0.0").unwrap();
         let parsed = neg_zero.as_f64().unwrap();
@@ -3358,20 +3584,66 @@ mod tests {
     #[test]
     #[cfg(not(feature = "serde"))]
     fn parser_regression_cases_work() {
-        assert!(matches!(from_str("+"), Err(JsonParseError::UnexpectedCharacter { .. })));
-        assert!(matches!(from_str("."), Err(JsonParseError::UnexpectedCharacter { .. })));
-        assert!(matches!(from_str("-"), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. }) | Err(JsonParseError::UnexpectedCharacter { .. })));
-        assert!(matches!(from_str("00"), Err(JsonParseError::InvalidNumber { .. })));
-        assert!(matches!(from_str("0."), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })));
-        assert!(matches!(from_str("1e"), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })));
-        assert!(matches!(from_str("1e+"), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })));
-        assert!(matches!(from_str("1a"), Err(JsonParseError::UnexpectedTrailingCharacters(_))));
-        assert!(matches!(from_str("[1,]"), Err(JsonParseError::UnexpectedCharacter { .. }) | Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::ExpectedCommaOrEnd { .. })));
-        assert!(matches!(from_str("[1 2]"), Err(JsonParseError::ExpectedCommaOrEnd { .. })));
-        assert!(matches!(from_str(r#"{"a":1 1"#), Err(JsonParseError::ExpectedCommaOrEnd { .. })));
-        assert!(matches!(from_str(r#"{"a":1,"#), Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::UnexpectedCharacter { .. })));
-        assert!(matches!(from_str("{1"), Err(JsonParseError::UnexpectedCharacter { .. })));
-        assert!(matches!(from_str(r#""\uD83C\uFFFF""#), Err(JsonParseError::InvalidUnicodeScalar { .. })));
+        assert!(matches!(
+            from_str("+"),
+            Err(JsonParseError::UnexpectedCharacter { .. })
+        ));
+        assert!(matches!(
+            from_str("."),
+            Err(JsonParseError::UnexpectedCharacter { .. })
+        ));
+        assert!(matches!(
+            from_str("-"),
+            Err(JsonParseError::UnexpectedEnd)
+                | Err(JsonParseError::InvalidNumber { .. })
+                | Err(JsonParseError::UnexpectedCharacter { .. })
+        ));
+        assert!(matches!(
+            from_str("00"),
+            Err(JsonParseError::InvalidNumber { .. })
+        ));
+        assert!(matches!(
+            from_str("0."),
+            Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })
+        ));
+        assert!(matches!(
+            from_str("1e"),
+            Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })
+        ));
+        assert!(matches!(
+            from_str("1e+"),
+            Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::InvalidNumber { .. })
+        ));
+        assert!(matches!(
+            from_str("1a"),
+            Err(JsonParseError::UnexpectedTrailingCharacters(_))
+        ));
+        assert!(matches!(
+            from_str("[1,]"),
+            Err(JsonParseError::UnexpectedCharacter { .. })
+                | Err(JsonParseError::UnexpectedEnd)
+                | Err(JsonParseError::ExpectedCommaOrEnd { .. })
+        ));
+        assert!(matches!(
+            from_str("[1 2]"),
+            Err(JsonParseError::ExpectedCommaOrEnd { .. })
+        ));
+        assert!(matches!(
+            from_str(r#"{"a":1 1"#),
+            Err(JsonParseError::ExpectedCommaOrEnd { .. })
+        ));
+        assert!(matches!(
+            from_str(r#"{"a":1,"#),
+            Err(JsonParseError::UnexpectedEnd) | Err(JsonParseError::UnexpectedCharacter { .. })
+        ));
+        assert!(matches!(
+            from_str("{1"),
+            Err(JsonParseError::UnexpectedCharacter { .. })
+        ));
+        assert!(matches!(
+            from_str(r#""\uD83C\uFFFF""#),
+            Err(JsonParseError::InvalidUnicodeScalar { .. })
+        ));
     }
 
     #[test]

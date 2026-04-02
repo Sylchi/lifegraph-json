@@ -1,8 +1,8 @@
 #![cfg(all(feature = "serde", feature = "raw_value"))]
 
 use lifegraph_json as serde_json;
-use serde_json::{from_str, to_string, RawValue, to_raw_value, Value, Map};
 use serde_crate::{Deserialize, Serialize};
+use serde_json::{from_str, to_raw_value, to_string, Map, RawValue, Value};
 
 #[test]
 fn raw_value_top_level_boxed_deserialization_works() {
@@ -93,7 +93,11 @@ fn serializer_output_works() {
         let output = to_string(&value).unwrap();
         // Re-parse to compare structure
         let reparsed: Value = from_str(&output).unwrap();
-        assert_eq!(to_string(&value).unwrap(), to_string(&reparsed).unwrap(), "input={input}");
+        assert_eq!(
+            to_string(&value).unwrap(),
+            to_string(&reparsed).unwrap(),
+            "input={input}"
+        );
     }
 }
 
@@ -109,6 +113,10 @@ fn parse_roundtrip_works() {
         let value: Value = from_str(input).unwrap();
         let output = to_string(&value).unwrap();
         let reparsed: Value = from_str(&output).unwrap();
-        assert_eq!(to_string(&value).unwrap(), to_string(&reparsed).unwrap(), "input={input}");
+        assert_eq!(
+            to_string(&value).unwrap(),
+            to_string(&reparsed).unwrap(),
+            "input={input}"
+        );
     }
 }

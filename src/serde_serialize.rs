@@ -1,5 +1,7 @@
 use crate::serde_error::{self, Error};
-use crate::{write_json_value, write_json_value_pretty, initial_json_capacity, JsonNumber, JsonValue, Map};
+use crate::{
+    initial_json_capacity, write_json_value, write_json_value_pretty, JsonNumber, JsonValue, Map,
+};
 use serde_crate::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant,
@@ -67,13 +69,17 @@ impl SerdeSerializer for JsonValueSerializer {
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, serde_error::Error> {
         JsonNumber::from_f64(v as f64)
             .map(JsonValue::Number)
-            .ok_or_else(|| serde_error::Error::custom("cannot serialize non-finite floating-point value"))
+            .ok_or_else(|| {
+                serde_error::Error::custom("cannot serialize non-finite floating-point value")
+            })
     }
 
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, serde_error::Error> {
         JsonNumber::from_f64(v)
             .map(JsonValue::Number)
-            .ok_or_else(|| serde_error::Error::custom("cannot serialize non-finite floating-point value"))
+            .ok_or_else(|| {
+                serde_error::Error::custom("cannot serialize non-finite floating-point value")
+            })
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, serde_error::Error> {
@@ -306,10 +312,9 @@ impl SerializeMap for JsonObjectSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let key = self
-            .next_key
-            .take()
-            .ok_or_else(|| serde_error::Error::custom("serialize_value called before serialize_key"))?;
+        let key = self.next_key.take().ok_or_else(|| {
+            serde_error::Error::custom("serialize_value called before serialize_key")
+        })?;
         self.map.insert(key, value.serialize(JsonValueSerializer)?);
         Ok(())
     }
@@ -426,7 +431,9 @@ impl SerdeSerializer for JsonKeySerializer {
     }
 
     fn serialize_bytes(self, _value: &[u8]) -> Result<Self::Ok, serde_error::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
 
     fn serialize_none(self) -> Result<Self::Ok, serde_error::Error> {
@@ -482,17 +489,23 @@ impl SerdeSerializer for JsonKeySerializer {
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
     fn serialize_tuple_struct(
         self,
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
     fn serialize_tuple_variant(
         self,
@@ -501,17 +514,23 @@ impl SerdeSerializer for JsonKeySerializer {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
     fn serialize_struct(
         self,
         _name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
     fn serialize_struct_variant(
         self,
@@ -520,7 +539,9 @@ impl SerdeSerializer for JsonKeySerializer {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Err(serde_error::Error::custom("JSON object keys must be strings"))
+        Err(serde_error::Error::custom(
+            "JSON object keys must be strings",
+        ))
     }
 }
 

@@ -1,8 +1,11 @@
 #![feature(test)]
 extern crate test;
 
+use serde_json::{
+    from_str, parse_json_borrowed, parse_json_tape, to_string, to_vec, CompiledTapeKeys, JsonValue,
+    Map,
+};
 use test::{black_box, Bencher};
-use serde_json::{to_string, to_vec, from_str, JsonValue, Map, parse_json_tape, parse_json_borrowed, CompiledTapeKeys};
 
 fn small_object() -> JsonValue {
     let mut obj = JsonValue::Object(Map::new());
@@ -16,17 +19,29 @@ fn medium_object() -> JsonValue {
     let mut metadata = JsonValue::Object(Map::new());
     metadata.push_field("created", 1234567890i64);
     metadata.push_field("updated", 9876543210i64);
-    metadata.push_field("tags", JsonValue::Array(
-        vec!["a", "b", "c", "d", "e"].into_iter().map(|s| JsonValue::String(s.to_string())).collect()
-    ));
+    metadata.push_field(
+        "tags",
+        JsonValue::Array(
+            vec!["a", "b", "c", "d", "e"]
+                .into_iter()
+                .map(|s| JsonValue::String(s.to_string()))
+                .collect(),
+        ),
+    );
 
     let mut user = JsonValue::Object(Map::new());
     user.push_field("id", 12345i64);
     user.push_field("name", "John Doe");
     user.push_field("email", "john@example.com");
-    user.push_field("roles", JsonValue::Array(
-        vec!["admin", "user", "editor"].into_iter().map(|s| JsonValue::String(s.to_string())).collect()
-    ));
+    user.push_field(
+        "roles",
+        JsonValue::Array(
+            vec!["admin", "user", "editor"]
+                .into_iter()
+                .map(|s| JsonValue::String(s.to_string()))
+                .collect(),
+        ),
+    );
     user.push_field("metadata", metadata);
 
     let mut obj = JsonValue::Object(Map::new());
@@ -42,48 +57,43 @@ fn array_of_ints() -> JsonValue {
 
 fn nested_arrays() -> JsonValue {
     JsonValue::Array(
-        (0..50).map(|i| {
-            JsonValue::Array((0..10).map(|j| JsonValue::from(i * 10 + j)).collect())
-        }).collect()
+        (0..50)
+            .map(|i| JsonValue::Array((0..10).map(|j| JsonValue::from(i * 10 + j)).collect()))
+            .collect(),
     )
 }
 
 fn string_with_escapes() -> JsonValue {
     let mut obj = JsonValue::Object(Map::new());
-    obj.push_field("message", "Hello \"World\"!\nLine\tbreak\rwith\tspecial\u{0001}chars");
+    obj.push_field(
+        "message",
+        "Hello \"World\"!\nLine\tbreak\rwith\tspecial\u{0001}chars",
+    );
     obj
 }
 
 #[bench]
 fn bench_serialize_small_object(b: &mut Bencher) {
     let obj = small_object();
-    b.iter(|| {
-        black_box(to_string(&obj)).unwrap()
-    });
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn bench_serialize_medium_object(b: &mut Bencher) {
     let obj = medium_object();
-    b.iter(|| {
-        black_box(to_string(&obj)).unwrap()
-    });
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn bench_serialize_array_of_ints(b: &mut Bencher) {
     let obj = array_of_ints();
-    b.iter(|| {
-        black_box(to_string(&obj)).unwrap()
-    });
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn bench_serialize_nested_arrays(b: &mut Bencher) {
     let obj = nested_arrays();
-    b.iter(|| {
-        black_box(to_string(&obj)).unwrap()
-    });
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
@@ -118,7 +128,13 @@ fn bench_deserialize_medium_object(b: &mut Bencher) {
 
 #[bench]
 fn bench_deserialize_array_of_ints(b: &mut Bencher) {
-    let json: String = format!("[{}]", (0..100).map(|i| i.to_string()).collect::<Vec<_>>().join(","));
+    let json: String = format!(
+        "[{}]",
+        (0..100)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
     b.iter(|| {
         let _: JsonValue = black_box(from_str(&json)).unwrap();
     });
@@ -127,17 +143,13 @@ fn bench_deserialize_array_of_ints(b: &mut Bencher) {
 #[bench]
 fn bench_serialize_string_with_escapes(b: &mut Bencher) {
     let obj = string_with_escapes();
-    b.iter(|| {
-        black_box(to_string(&obj)).unwrap()
-    });
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn bench_to_vec_small_object(b: &mut Bencher) {
     let obj = small_object();
-    b.iter(|| {
-        black_box(to_vec(&obj)).unwrap()
-    });
+    b.iter(|| black_box(to_vec(&obj)).unwrap());
 }
 
 #[bench]

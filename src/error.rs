@@ -19,6 +19,8 @@ pub enum JsonParseError {
     InvalidUnicodeScalar { index: usize },
     ExpectedColon { index: usize },
     ExpectedCommaOrEnd { index: usize, context: &'static str },
+    /// JSON nesting depth exceeds the maximum allowed (10000)
+    NestingTooDeep { depth: usize, max: usize },
 }
 
 impl fmt::Display for JsonError {
@@ -55,6 +57,9 @@ impl fmt::Display for JsonParseError {
             Self::ExpectedColon { index } => write!(f, "expected ':' at byte {index}"),
             Self::ExpectedCommaOrEnd { index, context } => {
                 write!(f, "expected ',' or end of {context} at byte {index}")
+            }
+            Self::NestingTooDeep { depth, max } => {
+                write!(f, "JSON nesting depth {} exceeds maximum {}", depth, max)
             }
         }
     }

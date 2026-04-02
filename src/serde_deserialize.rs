@@ -1,5 +1,5 @@
-use crate::{JsonNumber, JsonValue, Map, Parser};
 use crate::serde_error::json_parse_error_to_serde;
+use crate::{JsonNumber, JsonValue, Map, Parser};
 use serde_crate::de::{
     value::{BorrowedStrDeserializer, StringDeserializer},
     DeserializeOwned, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
@@ -55,7 +55,10 @@ impl<'de> Deserializer<'de> {
                 input: Cow::Borrowed(""),
                 offset: 0,
                 failed: true,
-                error: Some(json_parse_error_to_serde("", crate::JsonParseError::InvalidUtf8)),
+                error: Some(json_parse_error_to_serde(
+                    "",
+                    crate::JsonParseError::InvalidUtf8,
+                )),
             },
         }
     }
@@ -79,10 +82,9 @@ impl<'de> Deserializer<'de> {
 
     fn parse_next_value(&mut self) -> Result<JsonValue, crate::serde_error::Error> {
         if self.failed {
-            return Err(self
-                .error
-                .clone()
-                .unwrap_or_else(|| crate::serde_error::Error::custom("deserializer is in a failed state")));
+            return Err(self.error.clone().unwrap_or_else(|| {
+                crate::serde_error::Error::custom("deserializer is in a failed state")
+            }));
         }
 
         let remaining = self.remaining_input();
@@ -139,7 +141,9 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
         #[cfg(feature = "raw_value")]
         if name == crate::raw::RAW_VALUE_TOKEN {
             let raw = self.parse_next_value()?;
-            let raw_str = raw.to_json_string().map_err(crate::serde_error::json_error_to_serde)?;
+            let raw_str = raw
+                .to_json_string()
+                .map_err(crate::serde_error::json_error_to_serde)?;
             return visitor.visit_map(crate::raw::OwnedRawDeserializer::new(raw_str));
         }
         let value = self.parse_next_value()?;
@@ -569,7 +573,9 @@ impl<'de> Visitor<'de> for ValueVisitor {
     where
         E: serde_crate::de::Error,
     {
-        Ok(JsonValue::Number(JsonNumber::from_f64(value).unwrap_or(JsonNumber::F64(value))))
+        Ok(JsonValue::Number(
+            JsonNumber::from_f64(value).unwrap_or(JsonNumber::F64(value)),
+        ))
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -645,9 +651,7 @@ impl<'de> Visitor<'de> for NumberVisitor {
     where
         E: serde_crate::de::Error,
     {
-        JsonNumber::from_f64(value).ok_or_else(|| {
-            E::custom("invalid floating point number")
-        })
+        JsonNumber::from_f64(value).ok_or_else(|| E::custom("invalid floating point number"))
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -751,7 +755,10 @@ impl<'de> MapAccess<'de> for JsonMapAccess {
     where
         V: DeserializeSeed<'de>,
     {
-        let value = self.pending_value.take().expect("next_value_seed called before next_key_seed");
+        let value = self
+            .pending_value
+            .take()
+            .expect("next_value_seed called before next_key_seed");
         seed.deserialize(JsonValueDeserializer::new(value))
     }
 
@@ -773,7 +780,8 @@ impl<'de> EnumAccess<'de> for EnumVariantAccess {
     where
         V: DeserializeSeed<'de>,
     {
-        let deserializer: StringDeserializer<crate::serde_error::Error> = StringDeserializer::new(self.variant);
+        let deserializer: StringDeserializer<crate::serde_error::Error> =
+            StringDeserializer::new(self.variant);
         let variant = seed.deserialize(deserializer)?;
         Ok((variant, JsonValueDeserializer::new(self.value)))
     }
@@ -824,7 +832,8 @@ impl<'de> EnumAccess<'de> for UnitVariantAccess {
     where
         V: DeserializeSeed<'de>,
     {
-        let deserializer: StringDeserializer<crate::serde_error::Error> = StringDeserializer::new(self.variant);
+        let deserializer: StringDeserializer<crate::serde_error::Error> =
+            StringDeserializer::new(self.variant);
         let variant = seed.deserialize(deserializer)?;
         Ok((variant, Impossible(PhantomData, PhantomData)))
     }
