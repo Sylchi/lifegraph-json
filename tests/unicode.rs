@@ -2,7 +2,7 @@
 //!
 //! Run with: cargo test --test unicode -- --nocapture
 
-use lifegraph_json::{from_str, to_string, JsonValue};
+use lifegraph_json::{parse_json, to_string, JsonValue};
 
 /// Test that all valid Unicode scalar values are handled correctly
 #[test]
@@ -20,7 +20,7 @@ fn test_unicode_scalar_values() {
 
     for (ch, description) in test_chars {
         let json_str = format!("\"{}\"", ch);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
 
         assert!(
             result.is_ok(),
@@ -49,7 +49,7 @@ fn test_surrogate_pairs() {
 
     for pair in valid_pairs {
         let json_str = format!("\"{}\"", pair);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
 
         assert!(
             result.is_ok(),
@@ -73,7 +73,7 @@ fn test_surrogate_pairs() {
 
     for escape in invalid {
         let json_str = format!("\"{}\"", escape);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
         assert!(
             result.is_err(),
             "Should reject invalid surrogate: {}",
@@ -95,7 +95,7 @@ fn test_unicode_escapes() {
 
     for (escape, expected) in test_cases {
         let json_str = format!("\"{}\"", escape);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
 
         assert!(
             result.is_ok(),
@@ -125,7 +125,7 @@ fn test_standard_escapes() {
 
     for (escape, expected) in escapes {
         let json_str = format!("\"{}\"", escape);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
 
         assert!(result.is_ok(), "Failed to parse escape {}", escape);
 
@@ -146,7 +146,7 @@ fn test_invalid_escapes() {
 
     for escape in invalid {
         let json_str = format!("\"{}\"", escape);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
         assert!(result.is_err(), "Should reject invalid escape: {}", escape);
     }
 }
@@ -158,7 +158,7 @@ fn test_raw_utf8() {
 
     for text in test_cases {
         let json_str = format!("\"{}\"", text);
-        let result = from_str(&json_str);
+        let result = parse_json(&json_str);
 
         assert!(
             result.is_ok(),
@@ -174,6 +174,7 @@ fn test_raw_utf8() {
 }
 
 /// Test round-trip Unicode preservation
+#[cfg(feature = "serde")]
 #[test]
 fn test_unicode_roundtrip() {
     let test_strings = vec!["Hello, World!", "こんにちは世界", "🌍🌎🌏", "Привет мир"];
@@ -181,7 +182,8 @@ fn test_unicode_roundtrip() {
     for original in test_strings {
         let value = JsonValue::String(original.to_string());
         let serialized = to_string(&value).expect("Failed to serialize");
-        let deserialized: JsonValue = from_str(&serialized).expect("Failed to deserialize");
+        let deserialized: JsonValue =
+            lifegraph_json::from_str(&serialized).expect("Failed to deserialize");
 
         if let JsonValue::String(s) = &deserialized {
             assert_eq!(s, original, "Round-trip failed for {:?}", original);
@@ -192,10 +194,11 @@ fn test_unicode_roundtrip() {
 }
 
 /// Test Unicode in object keys
+#[cfg(feature = "serde")]
 #[test]
 fn test_unicode_keys() {
     let json = r#"{"日本語": "value", "🔑": "key", "clé": "french"}"#;
-    let result: JsonValue = from_str(json).expect("Failed to parse unicode keys");
+    let result: JsonValue = lifegraph_json::from_str(json).expect("Failed to parse unicode keys");
 
     if let JsonValue::Object(map) = &result {
         assert!(map.contains_key("日本語"));

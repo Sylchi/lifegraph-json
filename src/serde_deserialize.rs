@@ -1,10 +1,10 @@
 use crate::serde_error::json_parse_error_to_serde;
 use crate::{JsonNumber, JsonValue, Map, Parser};
 use serde_crate::de::{
-    value::{BorrowedStrDeserializer, StringDeserializer},
-    DeserializeOwned, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
+    value::StringDeserializer, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess,
+    Visitor,
 };
-use serde_crate::{Deserialize, Deserializer as SerdeDeserializer};
+use serde_crate::Deserializer as SerdeDeserializer;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
@@ -428,7 +428,7 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         }
     }
 
-    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
@@ -438,13 +438,13 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
     fn deserialize_tuple_struct<V>(
         self,
         _name: &'static str,
-        len: usize,
+        _len: usize,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_tuple(len, visitor)
+        self.deserialize_tuple(_len, visitor)
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>

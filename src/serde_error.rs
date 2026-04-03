@@ -21,6 +21,7 @@ pub enum Category {
 }
 
 #[cfg(feature = "serde")]
+#[allow(dead_code)]
 pub struct NumberFromString;
 
 #[cfg(feature = "serde")]
@@ -130,6 +131,7 @@ pub fn json_parse_error_to_serde(input: &str, error: JsonParseError) -> Error {
         | JsonParseError::InvalidUnicodeScalar { index }
         | JsonParseError::ExpectedColon { index }
         | JsonParseError::ExpectedCommaOrEnd { index, .. } => *index,
+        JsonParseError::NestingTooDeep { .. } => input.len(),
     };
 
     let (line, column) = line_column_for_byte(input, byte_index);
@@ -144,7 +146,8 @@ pub fn json_parse_error_to_serde(input: &str, error: JsonParseError) -> Error {
         | JsonParseError::InvalidUnicodeEscape { .. }
         | JsonParseError::InvalidUnicodeScalar { .. }
         | JsonParseError::ExpectedColon { .. }
-        | JsonParseError::ExpectedCommaOrEnd { .. } => Category::Syntax,
+        | JsonParseError::ExpectedCommaOrEnd { .. }
+        | JsonParseError::NestingTooDeep { .. } => Category::Syntax,
     };
     Error {
         message: error.to_string(),
@@ -173,6 +176,7 @@ pub fn json_error_to_serde(error: JsonError) -> Error {
 }
 
 #[cfg(feature = "serde")]
+#[allow(dead_code)]
 pub fn io(error: std::io::Error) -> Error {
     Error::io(error)
 }
