@@ -117,6 +117,14 @@ impl Map {
             &mut self.0.last_mut().unwrap().1
         }
     }
+
+    pub(crate) fn into_vec(self) -> Vec<(String, JsonValue)> {
+        self.0
+    }
+
+    pub(crate) fn push_entry(&mut self, entry: (String, JsonValue)) {
+        self.0.push(entry);
+    }
 }
 
 impl Default for Map {
