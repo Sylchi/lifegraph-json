@@ -17,14 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run json_ops benchmarks
-        run: cargo bench --bench json_ops -- --test
-
-      - name: Run comparison benchmarks
-        run: cargo bench --bench comparison --features serde_json_bench -- --test
+      - name: Run unified benchmarks
+        run: cargo bench --bench unified --features serde_json_bench -- --test
