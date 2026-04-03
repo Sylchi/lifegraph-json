@@ -74,6 +74,7 @@ struct CompiledField {
 }
 
 impl JsonTape {
+    #[must_use]
     pub fn root<'a>(&'a self, input: &'a str) -> Option<TapeValue<'a>> {
         (!self.tokens.is_empty()).then_some(TapeValue {
             tape: self,
@@ -84,10 +85,12 @@ impl JsonTape {
 }
 
 impl<'a> TapeValue<'a> {
+    #[must_use]
     pub fn kind(&self) -> TapeTokenKind {
         self.tape.tokens[self.index].kind
     }
 
+    #[must_use]
     pub fn as_str(&self) -> Option<&'a str> {
         let token = &self.tape.tokens[self.index];
         match token.kind {
@@ -104,6 +107,7 @@ impl<'a> TapeValue<'a> {
         }
     }
 
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<TapeValue<'a>> {
         if self.kind() != TapeTokenKind::Object {
             return None;
@@ -111,6 +115,7 @@ impl<'a> TapeValue<'a> {
         self.get_linear(key)
     }
 
+    #[must_use]
     pub fn build_object_index(&self) -> Option<TapeObjectIndex> {
         if self.kind() != TapeTokenKind::Object {
             return None;
@@ -147,6 +152,7 @@ impl<'a> TapeValue<'a> {
         Some(TapeObjectIndex { buckets })
     }
 
+    #[must_use]
     pub fn with_index<'b>(&'b self, index: &'b TapeObjectIndex) -> IndexedTapeObject<'b> {
         IndexedTapeObject {
             object: TapeValue {
@@ -194,10 +200,12 @@ impl<'a> TapeValue<'a> {
 }
 
 impl TapeObjectIndex {
+    #[must_use]
     pub fn get<'a>(&self, object: TapeValue<'a>, key: &str) -> Option<TapeValue<'a>> {
         self.get_hashed(object, util::hash_key(key.as_bytes()), key)
     }
 
+    #[must_use]
     pub fn get_compiled<'a>(
         &self,
         object: TapeValue<'a>,
@@ -236,12 +244,14 @@ impl CompiledTapeKey {
         Self { key, hash }
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.key
     }
 }
 
 impl CompiledTapeKeys {
+    #[must_use]
     pub fn new(keys: &[&str]) -> Self {
         Self {
             keys: keys.iter().map(|key| CompiledTapeKey::new(*key)).collect(),
@@ -254,10 +264,12 @@ impl CompiledTapeKeys {
 }
 
 impl<'a> IndexedTapeObject<'a> {
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<TapeValue<'a>> {
         self.index.get(self.object, key)
     }
 
+    #[must_use]
     pub fn get_compiled(&self, key: &CompiledTapeKey) -> Option<TapeValue<'a>> {
         self.index.get_compiled(self.object, key)
     }
@@ -278,6 +290,7 @@ impl<'a> IndexedTapeObject<'a> {
 }
 
 impl CompiledObjectSchema {
+    #[must_use]
     pub fn new(keys: &[&str]) -> Self {
         let mut fields = Vec::with_capacity(keys.len());
         let mut capacity_hint = 2;
@@ -299,6 +312,7 @@ impl CompiledObjectSchema {
         }
     }
 
+    #[must_use]
     pub fn keys(&self) -> impl ExactSizeIterator<Item = &str> {
         self.fields.iter().map(|field| field.key.as_str())
     }
@@ -328,18 +342,18 @@ impl CompiledObjectSchema {
             out.extend_from_slice(&field.rendered_prefix);
             util::write_json_value(out, value)?;
         }
-        if iter.next().is_some() {
-            panic!(
-                "compiled object schema received more than {} values",
-                self.fields.len()
-            );
-        }
+        assert!(
+            iter.next().is_none(),
+            "compiled object schema received more than {} values",
+            self.fields.len()
+        );
         out.push(b'}');
         Ok(())
     }
 }
 
 impl CompiledRowSchema {
+    #[must_use]
     pub fn new(keys: &[&str]) -> Self {
         let object = CompiledObjectSchema::new(keys);
         let row_capacity_hint = object.capacity_hint;
@@ -349,6 +363,7 @@ impl CompiledRowSchema {
         }
     }
 
+    #[must_use]
     pub fn object_schema(&self) -> &CompiledObjectSchema {
         &self.object
     }

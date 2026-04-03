@@ -5,14 +5,17 @@ use std::ops::{Deref, DerefMut};
 pub struct Map(Vec<(String, JsonValue)>);
 
 impl Map {
+    #[must_use]
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
+    #[must_use]
     pub fn keys(&self) -> impl ExactSizeIterator<Item = &String> {
         self.0.iter().map(|(key, _)| key)
     }
 
+    #[must_use]
     pub fn values(&self) -> impl ExactSizeIterator<Item = &JsonValue> {
         self.0.iter().map(|(_, value)| value)
     }
@@ -21,6 +24,7 @@ impl Map {
         self.0.iter_mut().map(|(_, value)| value)
     }
 
+    #[must_use]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &(String, JsonValue)> {
         self.0.iter()
     }
@@ -29,6 +33,7 @@ impl Map {
         self.0.iter_mut()
     }
 
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<&JsonValue> {
         self.0
             .iter()
@@ -43,6 +48,7 @@ impl Map {
             .map(|(_, value)| value)
     }
 
+    #[must_use]
     pub fn contains_key(&self, key: &str) -> bool {
         self.get(key).is_some()
     }

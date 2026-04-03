@@ -64,7 +64,7 @@ impl SerdeSerializer for JsonValueSerializer {
     }
 
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, serde_error::Error> {
-        JsonNumber::from_f64(v as f64)
+        JsonNumber::from_f64(f64::from(v))
             .map(JsonValue::Number)
             .ok_or_else(|| {
                 serde_error::Error::custom("cannot serialize non-finite floating-point value")

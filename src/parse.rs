@@ -643,9 +643,9 @@ impl<'a> Parser<'a> {
         for _ in 0..4 {
             let ch = self.next_byte().ok_or(JsonParseError::UnexpectedEnd)?;
             let digit = match ch {
-                b'0'..=b'9' => (ch - b'0') as u32,
-                b'a'..=b'f' => 10 + (ch - b'a') as u32,
-                b'A'..=b'F' => 10 + (ch - b'A') as u32,
+                b'0'..=b'9' => u32::from(ch - b'0'),
+                b'a'..=b'f' => 10 + u32::from(ch - b'a'),
+                b'A'..=b'F' => 10 + u32::from(ch - b'A'),
                 _ => return Err(JsonParseError::InvalidUnicodeEscape { index }),
             };
             value = (value << 4) | digit;

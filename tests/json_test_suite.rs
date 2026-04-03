@@ -1,6 +1,6 @@
-//! JSONTestSuite compatibility tests
+//! `JSONTestSuite` compatibility tests
 //!
-//! Run with: cargo test --test json_test_suite
+//! Run with: cargo test --test `json_test_suite`
 
 type TestCaseSet = (
     Vec<(String, Vec<u8>)>,
@@ -10,7 +10,7 @@ type TestCaseSet = (
 
 use lifegraph_json::parse_json;
 
-/// Load all test cases from the JSONTestSuite directory
+/// Load all test cases from the `JSONTestSuite` directory
 /// Files are named with prefixes: y_ (valid), n_ (invalid), i_ (implementation-defined)
 fn load_test_cases() -> TestCaseSet {
     let base_path = "tests/json_test_suite/test_parsing";
@@ -19,7 +19,7 @@ fn load_test_cases() -> TestCaseSet {
     let mut impl_defined = Vec::new();
 
     if !std::path::Path::new(base_path).exists() {
-        eprintln!("Warning: JSONTestSuite data not found at {}", base_path);
+        eprintln!("Warning: JSONTestSuite data not found at {base_path}");
         return (valid, invalid, impl_defined);
     }
 
@@ -57,12 +57,11 @@ fn test_valid_json() {
     let mut failed = Vec::new();
 
     for (name, data) in cases {
-        let data_str = match std::str::from_utf8(&data) {
-            Ok(s) => s,
-            Err(_) => {
-                passed += 1; // Invalid UTF-8 is a valid rejection
-                continue;
-            }
+        let data_str = if let Ok(s) = std::str::from_utf8(&data) {
+            s
+        } else {
+            passed += 1; // Invalid UTF-8 is a valid rejection
+            continue;
         };
         match parse_json(data_str) {
             Ok(_) => passed += 1,
@@ -73,7 +72,7 @@ fn test_valid_json() {
     if !failed.is_empty() {
         eprintln!("\n=== FAILED VALID JSON TESTS ===");
         for (name, err) in &failed {
-            eprintln!("  {}: {:?}", name, err);
+            eprintln!("  {name}: {err:?}");
         }
         panic!(
             "{} of {} valid JSON tests failed",
@@ -82,7 +81,7 @@ fn test_valid_json() {
         );
     }
 
-    eprintln!("Passed {} valid JSON tests", passed);
+    eprintln!("Passed {passed} valid JSON tests");
 }
 
 /// Test invalid JSON files - should fail to parse
@@ -99,18 +98,17 @@ fn test_invalid_json() {
     let mut depth_errors = Vec::new();
 
     for (name, data) in cases {
-        let data_str = match std::str::from_utf8(&data) {
-            Ok(s) => s,
-            Err(_) => {
-                passed += 1; // Invalid UTF-8 is a valid rejection
-                continue;
-            }
+        let data_str = if let Ok(s) = std::str::from_utf8(&data) {
+            s
+        } else {
+            passed += 1; // Invalid UTF-8 is a valid rejection
+            continue;
         };
         match parse_json(data_str) {
             Ok(_) => failed.push((name, "unexpectedly parsed".to_string())),
             Err(e) => {
                 // Check if it's a depth error - that's acceptable rejection
-                if format!("{:?}", e).contains("NestingTooDeep") {
+                if format!("{e:?}").contains("NestingTooDeep") {
                     depth_errors.push(name);
                 }
                 passed += 1; // Any error is acceptable for invalid JSON
@@ -121,14 +119,14 @@ fn test_invalid_json() {
     if !depth_errors.is_empty() {
         eprintln!("\n=== DEPTH ERRORS (acceptable rejections) ===");
         for name in &depth_errors {
-            eprintln!("  {}", name);
+            eprintln!("  {name}");
         }
     }
 
     if !failed.is_empty() {
         eprintln!("\n=== FAILED INVALID JSON TESTS ===");
         for (name, reason) in &failed {
-            eprintln!("  {}: {}", name, reason);
+            eprintln!("  {name}: {reason}");
         }
         panic!(
             "{} of {} invalid JSON tests incorrectly parsed",
@@ -157,29 +155,22 @@ fn test_implementation_defined_json() {
     let mut rejected = 0;
 
     for (name, data) in cases {
-        let data_str = match std::str::from_utf8(&data) {
-            Ok(s) => s,
-            Err(_) => {
-                rejected += 1;
-                continue;
-            }
+        let data_str = if let Ok(s) = std::str::from_utf8(&data) {
+            s
+        } else {
+            rejected += 1;
+            continue;
         };
-        match parse_json(data_str) {
-            Ok(_) => {
-                eprintln!("  Accepted: {}", name);
-                accepted += 1;
-            }
-            Err(_) => {
-                eprintln!("  Rejected: {}", name);
-                rejected += 1;
-            }
+        if parse_json(data_str).is_ok() {
+            eprintln!("  Accepted: {name}");
+            accepted += 1;
+        } else {
+            eprintln!("  Rejected: {name}");
+            rejected += 1;
         }
     }
 
-    eprintln!(
-        "Implementation-defined: {} accepted, {} rejected (no pass/fail)",
-        accepted, rejected
-    );
+    eprintln!("Implementation-defined: {accepted} accepted, {rejected} rejected (no pass/fail)");
 }
 
 /// Test number edge cases
@@ -253,7 +244,7 @@ fn test_deep_nesting() {
         eprintln!(
             "Depth {}: {:?}",
             depth,
-            result.as_ref().map(|_| "ok").unwrap_or("err")
+            result.as_ref().map_or("err", |_| "ok")
         );
     }
 }
@@ -264,19 +255,15 @@ fn test_depth_limiting() {
     // 127 nested arrays should work (below limit of 128)
     let json_127 = format!("[{}1{}]", "[".repeat(126), "]".repeat(126));
     let result = parse_json(&json_127);
-    eprintln!(
-        "127 depth: {:?}",
-        result.as_ref().map(|_| "ok").unwrap_or("err")
-    );
+    eprintln!("127 depth: {:?}", result.as_ref().map_or("err", |_| "ok"));
     assert!(result.is_ok(), "Expected 127 depth to parse OK");
 
     // 1000 nested arrays should fail with NestingTooDeep
     let json_1000 = format!("[{}1{}]", "[".repeat(999), "]".repeat(999));
     let result = parse_json(&json_1000);
-    eprintln!("1000 depth: {:?}", result);
+    eprintln!("1000 depth: {result:?}");
     assert!(
         result.is_err(),
-        "Expected NestingTooDeep error, got: {:?}",
-        result
+        "Expected NestingTooDeep error, got: {result:?}"
     );
 }

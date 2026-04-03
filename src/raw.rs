@@ -19,6 +19,7 @@ impl RawValue {
         Ok(unsafe { Box::from_raw(Box::into_raw(boxed) as *mut RawValue) })
     }
 
+    #[must_use]
     pub fn get(&self) -> &str {
         &self.0
     }
@@ -98,7 +99,7 @@ impl<'de> Deserialize<'de> for RawKey {
     {
         struct FieldVisitor;
 
-        impl<'de> Visitor<'de> for FieldVisitor {
+        impl Visitor<'_> for FieldVisitor {
             type Value = ();
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -198,7 +199,7 @@ impl<'de> DeserializeSeed<'de> for BoxedFromString {
     }
 }
 
-impl<'de> Visitor<'de> for BoxedFromString {
+impl Visitor<'_> for BoxedFromString {
     type Value = Box<RawValue>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

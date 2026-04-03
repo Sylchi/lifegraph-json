@@ -80,9 +80,9 @@ fn preserve_order_map_mutations_work() {
 #[test]
 fn serializer_output_works() {
     let cases = [
-        r#"null"#,
-        r#"true"#,
-        r#"123"#,
+        r"null",
+        r"true",
+        r"123",
         r#""hello\nworld""#,
         r#"[1,true,{"a":[null,"x"]}]"#,
         r#"{"z":0,"a":[1,2,3],"nested":{"ok":true,"msg":"hi"}}"#,

@@ -27,11 +27,10 @@ fn test_depth_limit() {
 
     let json_str = std::str::from_utf8(&json).unwrap();
     let result = parse_json(json_str);
-    eprintln!("129 depth: {:?}", result);
+    eprintln!("129 depth: {result:?}");
     // Should fail with NestingTooDeep
     assert!(
         result.is_err(),
-        "Expected NestingTooDeep error, got: {:?}",
-        result
+        "Expected NestingTooDeep error, got: {result:?}"
     );
 }

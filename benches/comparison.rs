@@ -10,61 +10,61 @@ use test::{black_box, Bencher};
 #[bench]
 fn serialize_small_object_lifegraph(b: &mut Bencher) {
     let obj = small_object();
-    b.iter(|| black_box(to_string(&obj)).unwrap())
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_small_object_upstream(b: &mut Bencher) {
     let obj = small_object_upstream();
-    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap())
+    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_medium_object_lifegraph(b: &mut Bencher) {
     let obj = medium_object();
-    b.iter(|| black_box(to_string(&obj)).unwrap())
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_medium_object_upstream(b: &mut Bencher) {
     let obj = medium_object_upstream();
-    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap())
+    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_array_of_ints_lifegraph(b: &mut Bencher) {
     let obj = array_of_ints();
-    b.iter(|| black_box(to_string(&obj)).unwrap())
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_array_of_ints_upstream(b: &mut Bencher) {
     let obj = array_of_ints_upstream();
-    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap())
+    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_nested_arrays_lifegraph(b: &mut Bencher) {
     let obj = nested_arrays();
-    b.iter(|| black_box(to_string(&obj)).unwrap())
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_nested_arrays_upstream(b: &mut Bencher) {
     let obj = nested_arrays_upstream();
-    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap())
+    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_string_with_escapes_lifegraph(b: &mut Bencher) {
     let obj = string_with_escapes();
-    b.iter(|| black_box(to_string(&obj)).unwrap())
+    b.iter(|| black_box(to_string(&obj)).unwrap());
 }
 
 #[bench]
 fn serialize_string_with_escapes_upstream(b: &mut Bencher) {
     let obj = string_with_escapes_upstream();
-    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap())
+    b.iter(|| black_box(serde_json_upstream::to_string(&obj)).unwrap());
 }
 
 // ============= DESERIALIZATION BENCHMARKS =============
@@ -74,7 +74,7 @@ fn deserialize_small_object_lifegraph(b: &mut Bencher) {
     let json = r#"{"id":42,"name":"test","active":true}"#;
     b.iter(|| {
         let _: JsonValue = black_box(from_str(json)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -82,7 +82,7 @@ fn deserialize_small_object_upstream(b: &mut Bencher) {
     let json = r#"{"id":42,"name":"test","active":true}"#;
     b.iter(|| {
         let _: serde_json_upstream::Value = black_box(serde_json_upstream::from_str(json)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -90,7 +90,7 @@ fn deserialize_medium_object_lifegraph(b: &mut Bencher) {
     let json = r#"{"user":{"id":12345,"name":"John Doe","email":"john@example.com","roles":["admin","user","editor"],"metadata":{"created":1234567890,"updated":9876543210,"tags":["a","b","c","d","e"]}},"status":"active","count":100}"#;
     b.iter(|| {
         let _: JsonValue = black_box(from_str(json)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -98,7 +98,7 @@ fn deserialize_medium_object_upstream(b: &mut Bencher) {
     let json = r#"{"user":{"id":12345,"name":"John Doe","email":"john@example.com","roles":["admin","user","editor"],"metadata":{"created":1234567890,"updated":9876543210,"tags":["a","b","c","d","e"]}},"status":"active","count":100}"#;
     b.iter(|| {
         let _: serde_json_upstream::Value = black_box(serde_json_upstream::from_str(json)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -112,7 +112,7 @@ fn deserialize_array_of_ints_lifegraph(b: &mut Bencher) {
     );
     b.iter(|| {
         let _: JsonValue = black_box(from_str(&json)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -127,7 +127,7 @@ fn deserialize_array_of_ints_upstream(b: &mut Bencher) {
     b.iter(|| {
         let _: serde_json_upstream::Value =
             black_box(serde_json_upstream::from_str(&json)).unwrap();
-    })
+    });
 }
 
 // ============= ROUNDTRIP BENCHMARKS =============
@@ -138,7 +138,7 @@ fn roundtrip_small_lifegraph(b: &mut Bencher) {
     b.iter(|| {
         let parsed: JsonValue = black_box(from_str(json)).unwrap();
         black_box(to_string(&parsed)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -148,7 +148,7 @@ fn roundtrip_small_upstream(b: &mut Bencher) {
         let parsed: serde_json_upstream::Value =
             black_box(serde_json_upstream::from_str(json)).unwrap();
         black_box(serde_json_upstream::to_string(&parsed)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -157,7 +157,7 @@ fn roundtrip_medium_lifegraph(b: &mut Bencher) {
     b.iter(|| {
         let parsed: JsonValue = black_box(from_str(json)).unwrap();
         black_box(to_string(&parsed)).unwrap();
-    })
+    });
 }
 
 #[bench]
@@ -167,7 +167,7 @@ fn roundtrip_medium_upstream(b: &mut Bencher) {
         let parsed: serde_json_upstream::Value =
             black_box(serde_json_upstream::from_str(json)).unwrap();
         black_box(serde_json_upstream::to_string(&parsed)).unwrap();
-    })
+    });
 }
 
 // ============= HELPERS (LIFEGRAF) =============
