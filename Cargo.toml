@@ -26,7 +26,7 @@ serde_json_bench = ["dep:serde_json_upstream"]
 
 [dependencies]
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
-serde_json_upstream = { package = "serde_json", version = "1", optional = true, default-features = false }
+serde_json_upstream = { package = "serde_json", version = "1", optional = true }
 schemars = { version = "0.8", optional = true }
 ts-rs = { version = "11", optional = true }
 
