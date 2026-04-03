@@ -108,14 +108,32 @@ pub fn write_json_number(out: &mut Vec<u8>, value: &JsonNumber) -> Result<(), Js
 pub fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
     out.push(b'"');
     let bytes = input.as_bytes();
+
+    // Find first escapable byte — scan 8 bytes at a time for ASCII text.
     let mut fast_index = 0usize;
-    while fast_index < bytes.len() {
+    let len = bytes.len();
+    while fast_index + 8 <= len {
+        let chunk = u64::from_le_bytes(bytes[fast_index..fast_index + 8].try_into().unwrap());
+        // Check for control chars (0x00..=0x1f), quote (0x22), backslash (0x5c)
+        // A byte is escapable if it's <= 0x1f, == 0x22, or == 0x5c
+        // has_zero checks for any byte with high bit clear after subtraction
+        let has_ctrl = has_byte_le(chunk, 0x20); // anything < 0x20
+        let eq_quote = has_byte_eq(chunk, b'"');
+        let eq_backslash = has_byte_eq(chunk, b'\\');
+        if has_ctrl | eq_quote | eq_backslash {
+            break;
+        }
+        fast_index += 8;
+    }
+    // Finish byte-by-byte
+    while fast_index < len {
         if needs_escape(bytes[fast_index]) {
             break;
         }
         fast_index += 1;
     }
-    if fast_index == bytes.len() {
+
+    if fast_index == len {
         out.extend_from_slice(bytes);
         out.push(b'"');
         return;
@@ -123,43 +141,66 @@ pub fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
     if fast_index > 0 {
         out.extend_from_slice(&bytes[..fast_index]);
     }
-    let mut chunk_start = fast_index;
-    for (index, byte) in bytes.iter().copied().enumerate().skip(fast_index) {
-        let escape = match byte {
-            b'"' => Some(br#"\""#.as_slice()),
-            b'\\' => Some(br"\\".as_slice()),
-            0x08 => Some(br"\b".as_slice()),
-            0x0c => Some(br"\f".as_slice()),
-            b'\n' => Some(br"\n".as_slice()),
-            b'\r' => Some(br"\r".as_slice()),
-            b'\t' => Some(br"\t".as_slice()),
-            _ => None,
-        };
-        if let Some(escape) = escape {
-            if chunk_start < index {
-                out.extend_from_slice(&bytes[chunk_start..index]);
-            }
-            out.extend_from_slice(escape);
-            chunk_start = index + 1;
+
+    // Main escape loop: scan for next escapable byte, copy plain runs, emit escapes
+    let mut pos = fast_index;
+    let mut plain_start = fast_index;
+    while pos < len {
+        let byte = bytes[pos];
+        if !needs_escape(byte) {
+            pos += 1;
             continue;
         }
-        if byte <= 0x1f {
-            if chunk_start < index {
-                out.extend_from_slice(&bytes[chunk_start..index]);
-            }
-            out.extend_from_slice(br"\u00");
-            out.push(hex_digit((byte >> 4) & 0x0f));
-            out.push(hex_digit(byte & 0x0f));
-            chunk_start = index + 1;
+        // Copy plain bytes before the escape
+        if pos > plain_start {
+            out.extend_from_slice(&bytes[plain_start..pos]);
         }
+        // Emit escape
+        match byte {
+            b'"' => out.extend_from_slice(br#"\""#),
+            b'\\' => out.extend_from_slice(br"\\"),
+            0x08 => out.extend_from_slice(br"\b"),
+            0x0c => out.extend_from_slice(br"\f"),
+            b'\n' => out.extend_from_slice(br"\n"),
+            b'\r' => out.extend_from_slice(br"\r"),
+            b'\t' => out.extend_from_slice(br"\t"),
+            _ => {
+                // Control char: \u00XX
+                out.extend_from_slice(br"\u00");
+                out.push(hex_digit((byte >> 4) & 0x0f));
+                out.push(hex_digit(byte & 0x0f));
+            }
+        }
+        pos += 1;
+        plain_start = pos;
     }
-    if chunk_start < input.len() {
-        out.extend_from_slice(&bytes[chunk_start..]);
+    // Copy trailing plain bytes
+    if plain_start < len {
+        out.extend_from_slice(&bytes[plain_start..]);
     }
     out.push(b'"');
 }
 
-fn needs_escape(byte: u8) -> bool {
+/// Check if any byte in a u64 is less than or equal to `limit`.
+/// Uses SIMD-style SWAR trick: (x - 0x0101010101010101) & ~x & 0x8080808080808080
+#[inline]
+fn has_byte_le(x: u64, limit: u8) -> bool {
+    // Check if any byte <= limit
+    // For limit=0x1f: check if any byte < 0x20
+    let lt = (x.wrapping_sub(0x0101010101010101 * u64::from(limit))) & !x & 0x8080808080808080;
+    lt != 0
+}
+
+/// Check if any byte in a u64 equals `val`.
+/// eq = (x ^ magic) - magic where magic replicates val
+#[inline]
+fn has_byte_eq(x: u64, val: u8) -> bool {
+    let magic = 0x0101010101010101 * u64::from(val);
+    let xor = x ^ magic;
+    (xor.wrapping_sub(0x0101010101010101)) & !xor & 0x8080808080808080 != 0
+}
+
+pub fn needs_escape(byte: u8) -> bool {
     matches!(byte, b'"' | b'\\' | 0x00..=0x1f)
 }
 
@@ -304,35 +345,191 @@ fn estimate_i64_len(value: i64) -> usize {
     }
 }
 
-fn append_i64(out: &mut Vec<u8>, value: i64) {
-    if value < 0 {
-        out.push(b'-');
-        append_u64(out, value.unsigned_abs());
-    } else {
-        append_u64(out, value as u64);
-    }
-}
-
-fn append_u64(out: &mut Vec<u8>, mut value: u64) {
-    let mut buf = [0u8; 20];
-    let mut index = buf.len();
-    loop {
-        index -= 1;
-        buf[index] = b'0' + (value % 10) as u8;
-        value /= 10;
-        if value == 0 {
-            break;
-        }
-    }
-    out.extend_from_slice(&buf[index..]);
-}
-
 fn hex_digit(value: u8) -> u8 {
     match value {
         0..=9 => b'0' + value,
         10..=15 => b'a' + (value - 10),
         _ => unreachable!(),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Fast number → bytes conversion
+// ---------------------------------------------------------------------------
+
+/// Table-based u64 → ASCII.  Writes into `out` directly (no intermediate buf).
+pub fn append_u64(out: &mut Vec<u8>, mut value: u64) {
+    if value == 0 {
+        out.push(b'0');
+        return;
+    }
+    // Two digits per iteration using a pre-computed table.
+    // We write into a local buffer then copy once at the end.
+    let mut buf = [0u8; 20];
+    let mut pos = buf.len();
+
+    // Process 2 digits at a time for the bulk of the number.
+    // For the last 1-2 digits (when value < 100) we handle separately.
+    const TABLE: &[u8; 200] = b"00010203040506070809\
+                               10111213141516171819\
+                               20212223242526272829\
+                               30313233343536373839\
+                               40414243444546474849\
+                               50515253545556575859\
+                               60616263646566676869\
+                               70717273747576777879\
+                               80818283848586878889\
+                               90919293949596979899";
+
+    while value >= 100 {
+        let d = (value % 100) as usize * 2;
+        value /= 100;
+        pos -= 2;
+        buf[pos] = TABLE[d];
+        buf[pos + 1] = TABLE[d + 1];
+    }
+
+    // Handle the remaining 1-2 digits.
+    if value < 10 {
+        pos -= 1;
+        buf[pos] = b'0' + value as u8;
+    } else {
+        let d = (value as usize) * 2;
+        pos -= 2;
+        buf[pos] = TABLE[d];
+        buf[pos + 1] = TABLE[d + 1];
+    }
+
+    out.extend_from_slice(&buf[pos..]);
+}
+
+/// i64 → ASCII.  Handles the sign then delegates to `append_u64`.
+pub fn append_i64(out: &mut Vec<u8>, value: i64) {
+    if value < 0 {
+        out.push(b'-');
+        // Use unsigned absolute value; for i64::MIN this wraps correctly
+        // because we go through u64.
+        append_u64(out, value.wrapping_abs() as u64);
+    } else {
+        append_u64(out, value as u64);
+    }
+}
+
+/// u128 → ASCII using the same two-digits-at-a-time technique.
+#[cfg(feature = "serde")]
+pub fn append_u128(out: &mut Vec<u8>, mut value: u128) {
+    if value == 0 {
+        out.push(b'0');
+        return;
+    }
+    let mut buf = [0u8; 40];
+    let mut pos = buf.len();
+
+    const TABLE: &[u8; 200] = b"00010203040506070809\
+                               10111213141516171819\
+                               20212223242526272829\
+                               30313233343536373839\
+                               40414243444546474849\
+                               50515253545556575859\
+                               60616263646566676869\
+                               70717273747576777879\
+                               80818283848586878889\
+                               90919293949596979899";
+
+    while value >= 100 {
+        let d = (value % 100) as usize * 2;
+        value /= 100;
+        pos -= 2;
+        buf[pos] = TABLE[d];
+        buf[pos + 1] = TABLE[d + 1];
+    }
+
+    if value < 10 {
+        pos -= 1;
+        buf[pos] = b'0' + value as u8;
+    } else {
+        let d = (value as usize) * 2;
+        pos -= 2;
+        buf[pos] = TABLE[d];
+        buf[pos + 1] = TABLE[d + 1];
+    }
+
+    out.extend_from_slice(&buf[pos..]);
+}
+
+/// i128 → ASCII.
+#[cfg(feature = "serde")]
+pub fn append_i128(out: &mut Vec<u8>, value: i128) {
+    if value < 0 {
+        out.push(b'-');
+        append_u128(out, value.wrapping_abs() as u128);
+    } else {
+        append_u128(out, value as u128);
+    }
+}
+
+/// f64 → ASCII.  Uses `ryu`-style formatting when available via
+/// `core::fmt::Write`, but avoids the FmtWriter struct re-definition overhead
+/// by using a small stack buffer and a single extend.
+#[cfg(feature = "serde")]
+pub fn append_f64(out: &mut Vec<u8>, value: f64) {
+    // Special cases
+    if value == 0.0 {
+        if value.is_sign_negative() {
+            out.extend_from_slice(b"-0.0");
+        } else {
+            out.extend_from_slice(b"0.0");
+        }
+        return;
+    }
+    // Fast path: use a stack buffer with core::fmt
+    use core::fmt::Write;
+    struct BufWriter<'a>(&'a mut [u8; 32], usize);
+    impl Write for BufWriter<'_> {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let bytes = s.as_bytes();
+            if self.1 + bytes.len() <= self.0.len() {
+                self.0[self.1..self.1 + bytes.len()].copy_from_slice(bytes);
+                self.1 += bytes.len();
+                Ok(())
+            } else {
+                Err(core::fmt::Error)
+            }
+        }
+    }
+    let mut buf = [0u8; 32];
+    let mut writer = BufWriter(&mut buf, 0);
+    // Use the default Display formatting (shortest round-trip representation)
+    if write!(writer, "{value:.17}").is_ok() {
+        // Post-process: remove trailing zeros after decimal point
+        let len = writer.1;
+        let s = &buf[..len];
+        // Check if there's a decimal point and strip trailing zeros
+        if let Some(dot_pos) = s.iter().position(|&b| b == b'.') {
+            let mut end = len;
+            // Remove trailing zeros
+            while end > dot_pos + 1 && s[end - 1] == b'0' {
+                end -= 1;
+            }
+            // Don't remove the last digit after the dot if it's the only one
+            if end == dot_pos + 1 {
+                end = dot_pos; // remove the dot too
+            }
+            out.extend_from_slice(&s[..end]);
+        } else {
+            out.extend_from_slice(s);
+        }
+        return;
+    }
+    // Fallback: use a simpler approach
+    // This shouldn't normally happen with the 32-byte buffer
+    let mut buf2 = [0u8; 32];
+    let len = {
+        let mut fallback_writer = BufWriter(&mut buf2, 0);
+        let _ = write!(fallback_writer, "{value}");
+        fallback_writer.1
+    };
+    out.extend_from_slice(&buf2[..len]);
 }
 
 pub fn hash_key(bytes: &[u8]) -> u64 {

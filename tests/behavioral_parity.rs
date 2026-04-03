@@ -1,38 +1,12 @@
-#![cfg(all(feature = "serde", feature = "raw_value"))]
+//! Behavioral parity tests - run with serde feature by default
+//!
+//! These tests verify lifegraph-json behavior matches serde_json expectations.
+//! RawValue tests are conditionally compiled only when raw_value feature is present.
+
+#![cfg(feature = "serde")]
 
 use lifegraph_json as serde_json;
-use serde_crate::Serialize;
-use serde_json::{from_str, to_raw_value, to_string, Map, RawValue, Value};
-
-#[test]
-fn raw_value_top_level_boxed_deserialization_works() {
-    let input = r#"[null,{"a":1},"two"]"#;
-
-    let raw: Box<RawValue> = from_str(input).unwrap();
-    assert_eq!(raw.get(), input);
-}
-
-#[test]
-fn to_raw_value_works() {
-    #[derive(Serialize)]
-    #[serde(crate = "serde_crate")]
-    struct Payload<'a> {
-        name: &'a str,
-        ok: bool,
-        count: u32,
-    }
-
-    let payload = Payload {
-        name: "node-1",
-        ok: true,
-        count: 7,
-    };
-
-    let raw = to_raw_value(&payload).unwrap();
-    assert!(raw.get().contains("\"name\":\"node-1\""));
-    assert!(raw.get().contains("\"ok\":true"));
-    assert!(raw.get().contains("\"count\":7"));
-}
+use serde_json::{from_str, to_string, Map, Value};
 
 #[test]
 fn parse_error_shape_for_selected_cases() {
@@ -118,5 +92,43 @@ fn parse_roundtrip_works() {
             to_string(&reparsed).unwrap(),
             "input={input}"
         );
+    }
+}
+
+// RawValue tests - only compiled when raw_value feature is enabled
+#[cfg(feature = "raw_value")]
+mod raw_value_tests {
+    use super::*;
+    use serde_crate::Serialize;
+    use serde_json::{to_raw_value, RawValue};
+
+    #[test]
+    fn raw_value_top_level_boxed_deserialization_works() {
+        let input = r#"[null,{"a":1},"two"]"#;
+
+        let raw: Box<RawValue> = from_str(input).unwrap();
+        assert_eq!(raw.get(), input);
+    }
+
+    #[test]
+    fn to_raw_value_works() {
+        #[derive(Serialize)]
+        #[serde(crate = "serde_crate")]
+        struct Payload<'a> {
+            name: &'a str,
+            ok: bool,
+            count: u32,
+        }
+
+        let payload = Payload {
+            name: "node-1",
+            ok: true,
+            count: 7,
+        };
+
+        let raw = to_raw_value(&payload).unwrap();
+        assert!(raw.get().contains("\"name\":\"node-1\""));
+        assert!(raw.get().contains("\"ok\":true"));
+        assert!(raw.get().contains("\"count\":7"));
     }
 }

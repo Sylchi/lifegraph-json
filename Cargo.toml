@@ -22,7 +22,7 @@ serde = ["dep:serde_crate"]
 # Compatibility testing feature - allows using this crate as serde_json drop-in
 compat_test = []
 # Enable serde_json comparison benchmarks (pulls in serde_json from crates.io)
-serde_json_bench = ["dep:serde_json_upstream"]
+serde_json_bench = ["dep:serde_json_upstream", "serde"]
 
 [dependencies]
 serde_crate = { package = "serde", version = "1", features = ["derive"], optional = true }
@@ -33,10 +33,11 @@ ts-rs = { version = "11", optional = true }
 [dev-dependencies]
 serde_crate = { package = "serde", version = "1", features = ["derive"] }
 serde_bytes = "0.11"
+serde_json_upstream = { package = "serde_json", version = "1" }
+walkdir = "2"
+criterion = "0.5"
 
 [[bench]]
-name = "json_ops"
-
-[[bench]]
-name = "comparison"
+name = "unified"
 required-features = ["serde_json_bench"]
+harness = false

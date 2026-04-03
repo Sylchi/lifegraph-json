@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use crate::map::Map;
 use crate::number::JsonNumber;
-use crate::parse::Parser;
+use crate::parse::{parse_i64_fast, parse_u64_fast, Parser};
 use crate::serde_error::json_parse_error_to_serde;
 use crate::JsonValue;
 use serde_crate::de::{
@@ -110,8 +110,14 @@ impl<'de> Deserializer<'de> {
         self.offset += i;
     }
 
+    #[inline]
     fn peek_byte(&mut self) -> Option<u8> {
         self.skip_whitespace();
+        self.remaining_input().as_bytes().first().copied()
+    }
+
+    #[inline]
+    fn peek_byte_nws(&mut self) -> Option<u8> {
         self.remaining_input().as_bytes().first().copied()
     }
 
@@ -170,16 +176,118 @@ impl<'de> Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        let remaining = self.remaining_input();
-        let mut p = Parser::new(remaining);
-        let num = p
-            .parse_number()
-            .map_err(|e| json_parse_error_to_serde(remaining, e))?;
-        self.offset += p.index();
-        match num {
-            JsonNumber::I64(v) => visitor.visit_i64(v),
-            JsonNumber::U64(v) => visitor.visit_u64(v),
-            JsonNumber::F64(v) => visitor.visit_f64(v),
+        let input = self.input.as_bytes();
+        let start = self.offset;
+
+        let negative = input.get(self.offset) == Some(&b'-');
+        if negative {
+            self.offset += 1;
+        }
+
+        let mut uint_val: u64 = 0;
+        let mut uint_overflow = false;
+
+        if let Some(&b'0') = input.get(self.offset) {
+            self.offset += 1;
+            if let Some(&digit) = input.get(self.offset) {
+                if digit.is_ascii_digit() {
+                    return Err(json_parse_error_to_serde(
+                        &self.input[start..],
+                        Self::error_literal(start),
+                    ));
+                }
+            }
+        } else {
+            let digit_start = self.offset;
+            while let Some(&b) = input.get(self.offset) {
+                if !b.is_ascii_digit() {
+                    break;
+                }
+                let digit = u64::from(b - b'0');
+                let (new_val, overflow) = uint_val.overflowing_mul(10);
+                let (new_val, overflow2) = new_val.overflowing_add(digit);
+                if overflow || overflow2 {
+                    uint_overflow = true;
+                }
+                uint_val = new_val;
+                self.offset += 1;
+            }
+            if self.offset == digit_start {
+                return Err(json_parse_error_to_serde(
+                    &self.input[start..],
+                    Self::error_literal(start),
+                ));
+            }
+        }
+
+        let mut is_float = false;
+        if input.get(self.offset) == Some(&b'.') {
+            is_float = true;
+            self.offset += 1;
+            let frac_start = self.offset;
+            while let Some(&b) = input.get(self.offset) {
+                if !b.is_ascii_digit() {
+                    break;
+                }
+                self.offset += 1;
+            }
+            if self.offset == frac_start {
+                return Err(json_parse_error_to_serde(
+                    &self.input[start..],
+                    Self::error_literal(start),
+                ));
+            }
+        }
+        if matches!(input.get(self.offset), Some(b'e' | b'E')) {
+            is_float = true;
+            self.offset += 1;
+            if matches!(input.get(self.offset), Some(b'+' | b'-')) {
+                self.offset += 1;
+            }
+            let exp_start = self.offset;
+            while let Some(&b) = input.get(self.offset) {
+                if !b.is_ascii_digit() {
+                    break;
+                }
+                self.offset += 1;
+            }
+            if self.offset == exp_start {
+                return Err(json_parse_error_to_serde(
+                    &self.input[start..],
+                    Self::error_literal(start),
+                ));
+            }
+        }
+
+        if is_float {
+            let token = &self.input[start..self.offset];
+            let value = token
+                .parse::<f64>()
+                .map_err(|_| json_parse_error_to_serde(token, Self::error_literal(start)))?;
+            if !value.is_finite() {
+                return Err(json_parse_error_to_serde(token, Self::error_literal(start)));
+            }
+            visitor.visit_f64(value)
+        } else if negative {
+            if uint_overflow || uint_val > (i64::MAX as u64) + 1 {
+                let token = &self.input[start..self.offset];
+                let value = token
+                    .parse::<i64>()
+                    .map_err(|_| json_parse_error_to_serde(token, Self::error_literal(start)))?;
+                visitor.visit_i64(value)
+            } else {
+                visitor.visit_i64(uint_val.wrapping_neg() as i64)
+            }
+        } else {
+            if uint_overflow {
+                let token = &self.input[start..self.offset];
+                let value = token
+                    .parse::<f64>()
+                    .map_err(|_| json_parse_error_to_serde(token, Self::error_literal(start)))?;
+                visitor.visit_f64(value)
+            } else {
+                visitor.visit_u64(uint_val)
+            }
         }
     }
 
@@ -274,6 +382,7 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
         }
     }
 
+    #[allow(unused_variables)]
     fn deserialize_newtype_struct<V>(
         self,
         name: &'static str,
@@ -310,10 +419,231 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
         self.consume_object(visitor)
     }
 
-    serde_crate::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
-        bytes byte_buf unit unit_struct seq tuple tuple_struct map identifier ignored_any
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_array(visitor)
     }
+
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_array(visitor)
+    }
+
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_object(visitor)
+    }
+
+    // Typed numeric deserializers — avoid the full type-detection path.
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_integer(visitor, |token, visitor| {
+            if let Some(i) = parse_i64_fast(token) {
+                visitor.visit_i64(i)
+            } else {
+                // Fallback for very large numbers
+                visitor.visit_i64(token.parse::<f64>().unwrap_or(0.0) as i64)
+            }
+        })
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_integer(visitor, |token, visitor| {
+            if let Some(u) = parse_u64_fast(token) {
+                visitor.visit_u64(u)
+            } else {
+                visitor.visit_u64(token.parse::<f64>().unwrap_or(0.0) as u64)
+            }
+        })
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_integer(visitor, |token, visitor| {
+            visitor.visit_f64(token.parse::<f64>().unwrap_or(0.0))
+        })
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+    fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+    fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_f64(visitor)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_string(visitor)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_string(visitor)
+    }
+
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        if self.failed {
+            return Err(self.error.clone().unwrap_or_else(|| {
+                crate::serde_error::Error::custom("deserializer is in a failed state")
+            }));
+        }
+        match self.peek_byte() {
+            Some(b't') => self.consume_literal(b"true", visitor.visit_bool(true)),
+            Some(b'f') => self.consume_literal(b"false", visitor.visit_bool(false)),
+            Some(found) => {
+                let err = <Deserializer<'de>>::error_unexpected(self.offset, found as char);
+                Err(json_parse_error_to_serde(self.remaining_input(), err))
+            }
+            None => {
+                let err = crate::JsonParseError::UnexpectedEnd;
+                Err(json_parse_error_to_serde("", err))
+            }
+        }
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_string(visitor)
+    }
+
+    // These still go through the general path (they need full type info).
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_direct(visitor)
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_direct(visitor)
+    }
+
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_direct(visitor)
+    }
+
+    fn deserialize_unit_struct<V>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_direct(visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_array(visitor)
+    }
+
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_any(visitor)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DirectSeqAccess — single-pass array deserialization
+// ---------------------------------------------------------------------------
+
+struct DirectSeqAccess<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
 }
 
 impl<'de> Deserializer<'de> {
@@ -327,15 +657,81 @@ impl<'de> Deserializer<'de> {
         self.offset += p.index();
         Ok(s)
     }
+
+    /// Parse a JSON number token and feed it to the visitor via a callback.
+    /// Used by typed numeric deserializers to avoid full type detection.
+    fn consume_integer<V, F>(
+        &mut self,
+        visitor: V,
+        f: F,
+    ) -> Result<V::Value, crate::serde_error::Error>
+    where
+        V: Visitor<'de>,
+        F: FnOnce(&str, V) -> Result<V::Value, crate::serde_error::Error>,
+    {
+        if self.failed {
+            return Err(self.error.clone().unwrap_or_else(|| {
+                crate::serde_error::Error::custom("deserializer is in a failed state")
+            }));
+        }
+        let start = self.offset;
+        let bytes = &self.input.as_bytes()[start..];
+
+        // Skip whitespace already done by caller via peek_byte
+        if bytes
+            .first()
+            .map_or(true, |&b| !matches!(b, b'-' | b'0'..=b'9'))
+        {
+            let err = crate::JsonParseError::InvalidNumber { index: start };
+            return Err(json_parse_error_to_serde(&self.input[start..], err));
+        }
+
+        let mut i = 0usize;
+        if bytes[i] == b'-' {
+            i += 1;
+        }
+
+        // Integer digits
+        if i < bytes.len() && bytes[i] == b'0' {
+            i += 1;
+        } else {
+            let digit_start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i == digit_start {
+                let err = crate::JsonParseError::InvalidNumber { index: start };
+                return Err(json_parse_error_to_serde(&self.input[start..], err));
+            }
+        }
+
+        // Skip fractional and exponent parts (they make this a float)
+        if i < bytes.len() && bytes[i] == b'.' {
+            i += 1;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+        }
+        if i < bytes.len() && matches!(bytes[i], b'e' | b'E') {
+            i += 1;
+            if i < bytes.len() && matches!(bytes[i], b'+' | b'-') {
+                i += 1;
+            }
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+        }
+
+        // Safety: start + i <= input_len because i < bytes.len() and bytes = input[start..]
+        let token_str = &self.input[start..start + i];
+        self.offset = start + i;
+        f(token_str, visitor)
+    }
 }
 
 // ---------------------------------------------------------------------------
 // DirectSeqAccess — single-pass array deserialization
 // ---------------------------------------------------------------------------
-
-struct DirectSeqAccess<'a, 'de: 'a> {
-    de: &'a mut Deserializer<'de>,
-}
 
 impl<'de> SeqAccess<'de> for DirectSeqAccess<'_, 'de> {
     type Error = crate::serde_error::Error;
@@ -344,7 +740,8 @@ impl<'de> SeqAccess<'de> for DirectSeqAccess<'_, 'de> {
     where
         T: DeserializeSeed<'de>,
     {
-        match self.de.peek_byte() {
+        self.de.skip_whitespace();
+        match self.de.peek_byte_nws() {
             Some(b']') => {
                 self.de.offset += 1;
                 Ok(None)
@@ -381,14 +778,16 @@ impl<'de> MapAccess<'de> for DirectMapAccess<'_, 'de> {
     where
         K: DeserializeSeed<'de>,
     {
-        match self.de.peek_byte() {
+        // Skip whitespace once
+        self.de.skip_whitespace();
+        match self.de.peek_byte_nws() {
             Some(b'}') => {
                 self.de.offset += 1;
                 Ok(None)
             }
             Some(b',') => {
-                self.de.offset += 1;
-                self.de.skip_whitespace();
+                self.de.offset += 1; // consume ','
+                self.de.skip_whitespace(); // skip ws after comma
                 let key = self.de.read_string()?;
                 self.de.skip_whitespace();
                 if self.de.remaining_input().as_bytes().starts_with(b":") {
@@ -396,13 +795,17 @@ impl<'de> MapAccess<'de> for DirectMapAccess<'_, 'de> {
                 }
                 seed.deserialize(StringDeserializer::new(key)).map(Some)
             }
-            Some(_) => {
+            Some(b'"') => {
                 let key = self.de.read_string()?;
                 self.de.skip_whitespace();
                 if self.de.remaining_input().as_bytes().starts_with(b":") {
                     self.de.offset += 1;
                 }
                 seed.deserialize(StringDeserializer::new(key)).map(Some)
+            }
+            Some(found) => {
+                let err = <Deserializer<'de>>::error_unexpected(self.de.offset, found as char);
+                Err(json_parse_error_to_serde(self.de.remaining_input(), err))
             }
             None => {
                 let err = crate::JsonParseError::UnexpectedEnd;
@@ -591,8 +994,7 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
             }
             JsonValue::Object(obj) => {
                 let len = obj.len();
-                let entries: Vec<(String, JsonValue)> =
-                    obj.0.into_iter().map(|(k, v)| (k, v)).collect();
+                let entries: Vec<(String, JsonValue)> = obj.0.into_iter().collect();
                 let mut map = JsonMapAccess {
                     iter: entries.into_iter(),
                     len,
@@ -715,8 +1117,7 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         match self.value {
             JsonValue::Object(obj) => {
                 let len = obj.len();
-                let entries: Vec<(String, JsonValue)> =
-                    obj.0.into_iter().map(|(k, v)| (k, v)).collect();
+                let entries: Vec<(String, JsonValue)> = obj.0.into_iter().collect();
                 let mut map = JsonMapAccess {
                     iter: entries.into_iter(),
                     len,
@@ -967,10 +1368,10 @@ impl<'de> Visitor<'de> for NumberVisitor {
                 return Ok(JsonNumber::F64(n));
             }
         }
-        if let Ok(n) = value.parse::<i64>() {
+        if let Some(n) = parse_i64_fast(value) {
             return Ok(JsonNumber::from(n));
         }
-        if let Ok(n) = value.parse::<u64>() {
+        if let Some(n) = parse_u64_fast(value) {
             return Ok(JsonNumber::from(n));
         }
         Err(E::custom("invalid number"))

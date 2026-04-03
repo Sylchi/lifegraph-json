@@ -5,6 +5,10 @@
 The `serde` feature controls whether lifegraph-json integrates with the [serde](https://serde.rs/) ecosystem.
 This changes both the **public API** and the **performance characteristics**.
 
+For a detailed breakdown of what works, what doesn't, and known limitations:
+
+📖 **[See COMPATIBILITY_GUIDE.md](COMPATIBILITY_GUIDE.md)**
+
 ## Without `serde` (default, fast path)
 
 ```toml

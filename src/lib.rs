@@ -1,3 +1,44 @@
+//! # lifegraph-json
+//!
+//! A zero-dependency JSON crate with owned, borrowed, tape, and compiled-schema fast paths.
+//!
+//! # Quick Start
+//!
+//! ```
+//! use lifegraph_json::{json, from_str, to_string, Value};
+//!
+//! // Parse JSON
+//! let value: Value = from_str(r#"{"ok":true,"n":7}"#)?;
+//! assert_eq!(value["ok"].as_bool(), Some(true));
+//! assert_eq!(value["n"].as_i64(), Some(7));
+//!
+//! // Build JSON
+//! let built = json!({"msg": "hello", "items": [1, 2, null]});
+//! let encoded = to_string(&built)?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! # Parsing Paths
+//!
+//! - **Owned**: [`parse_json`] or [`from_str`] — standard full-copy parsing
+//! - **Borrowed**: [`parse_json_borrowed`] — zero-copy for strings/keys (lifetime-bound)
+//! - **Tape**: [`parse_json_tape`] — fast token stream with indexed lookups
+//!
+//! # Features
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `std` (default) | Standard library support |
+//! | `alloc` | Allocator support (no std) |
+//! | `serde` | Serde Serialize/Deserialize support |
+//! | `indexmap` | Use indexmap for ordered maps |
+//! | `raw_value` | Raw value support (requires serde) |
+//!
+//! # Zero Dependencies
+//!
+//! By default, this crate has **zero runtime dependencies**. The `serde` feature
+//! is optional and enables typed serialization/deserialization.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(not(feature = "std"))]
@@ -22,7 +63,7 @@ mod map;
 mod number;
 mod parse;
 mod partial_eq;
-#[cfg(all(feature = "serde", feature = "raw_value"))]
+#[cfg(feature = "raw_value")]
 mod raw;
 mod serde_api;
 #[cfg(feature = "serde")]
@@ -31,6 +72,8 @@ mod serde_deserialize;
 mod serde_error;
 #[cfg(feature = "serde")]
 mod serde_serialize;
+#[cfg(feature = "serde")]
+mod serde_streaming_serialize;
 mod tape;
 mod util;
 mod value;
@@ -54,7 +97,7 @@ pub use tape::{
 };
 pub use value::{JsonValue, Number, Value};
 
-#[cfg(all(feature = "serde", feature = "raw_value"))]
+#[cfg(feature = "raw_value")]
 pub use raw::{to_raw_value, RawValue};
 #[cfg(feature = "serde")]
 pub use serde_deserialize::JsonValueDeserializer;

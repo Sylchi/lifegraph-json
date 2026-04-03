@@ -1,3 +1,28 @@
+//! JSON value types and operations.
+//!
+//! # Types
+//!
+//! - [`JsonValue`] — the main owned JSON value type
+//! - [`Value`] — alias for [`JsonValue`]
+//! - [`JsonNumber`] — JSON number representation (see [`number`](crate::number))
+//!
+//! # Example
+//!
+//! ```
+//! use lifegraph_json::{json, JsonValue};
+//!
+//! // Using the json! macro
+//! let value = json!({"name": "Alice", "age": 30, "active": true});
+//! assert_eq!(value["name"].as_str(), Some("Alice"));
+//!
+//! // Building programmatically
+//! let obj = JsonValue::object(vec![
+//!     ("id", 1.into()),
+//!     ("tags", JsonValue::array(vec!["a".into(), "b".into()])),
+//! ]);
+//! assert_eq!(obj["id"].as_u64(), Some(1));
+//! ```
+
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
 #[cfg(not(feature = "std"))]
@@ -14,6 +39,25 @@ use crate::util;
 use crate::ValueIndex;
 use core::fmt;
 
+/// A JSON value that owns its data.
+///
+/// This is the main JSON value type in lifegraph-json, supporting all standard
+/// JSON types: null, boolean, number, string, array, and object.
+///
+/// # Construction
+///
+/// Use the [`json!`] macro for literal-like syntax, or the [`JsonValue::object`]
+/// and [`JsonValue::array`] constructors for programmatic building.
+///
+/// # Example
+///
+/// ```
+/// use lifegraph_json::{json, JsonValue};
+///
+/// let v = json!({"key": "value", "nums": [1, 2, 3]});
+/// assert!(v.is_object());
+/// assert_eq!(v["key"].as_str(), Some("value"));
+/// ```
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum JsonValue {
     #[default]
@@ -25,12 +69,27 @@ pub enum JsonValue {
     Object(Map),
 }
 
+/// Type alias for [`JsonValue`].
 pub type Value = JsonValue;
+/// Type alias for [`JsonNumber`].
 pub type Number = JsonNumber;
 
 impl Eq for JsonValue {}
 
 impl JsonValue {
+    /// Creates a JSON object from key-value pairs.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lifegraph_json::JsonValue;
+    ///
+    /// let obj = JsonValue::object(vec![
+    ///     ("name", "Alice".into()),
+    ///     ("age", 30.into()),
+    /// ]);
+    /// assert_eq!(obj["name"].as_str(), Some("Alice"));
+    /// ```
     #[must_use]
     pub fn object(entries: Vec<(impl Into<String>, JsonValue)>) -> Self {
         Self::Object(
@@ -42,11 +101,36 @@ impl JsonValue {
         )
     }
 
+    /// Creates a JSON array from values.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lifegraph_json::JsonValue;
+    ///
+    /// let arr = JsonValue::array(vec![1.into(), 2.into(), 3.into()]);
+    /// assert_eq!(arr.len(), 3);
+    /// assert_eq!(arr[0].as_u64(), Some(1));
+    /// ```
     #[must_use]
     pub fn array(values: Vec<JsonValue>) -> Self {
         Self::Array(values)
     }
 
+    /// Serializes this JSON value to a compact JSON string.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lifegraph_json::JsonValue;
+    ///
+    /// let value = JsonValue::object(vec![("ok", true.into())]);
+    /// assert_eq!(value.to_json_string().unwrap(), r#"{"ok":true}"#);
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`JsonError::NonFiniteNumber`] if the value contains `NaN` or `Infinity`.
     pub fn to_json_string(&self) -> Result<String, crate::error::JsonError> {
         let mut out = Vec::with_capacity(util::initial_json_capacity(self));
         util::write_json_value(&mut out, self)?;

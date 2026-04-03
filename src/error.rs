@@ -1,47 +1,111 @@
+//! JSON error types.
+//!
+//! # Error Types
+//!
+//! - [`JsonError`] — serialization errors (non-finite numbers, I/O errors)
+//! - [`JsonParseError`] — parsing errors with detailed diagnostics
+//!
+//! # Example
+//!
+//! ```
+//! use lifegraph_json::{parse_json, JsonParseError};
+//!
+//! let result = parse_json("{invalid}");
+//! assert!(matches!(result, Err(JsonParseError::UnexpectedCharacter { .. })));
+//! ```
+
 use core::fmt;
 
+/// Errors that can occur during JSON serialization.
+///
+/// This enum covers edge cases during serialization:
+/// - [`NonFiniteNumber`] — `NaN` or `Infinity` values (not valid JSON)
+/// - [`Io`] — I/O errors when writing to a [`Write`](std::io::Write) (requires `std` feature)
+///
+/// [`NonFiniteNumber`]: JsonError::NonFiniteNumber
+/// [`Io`]: JsonError::Io
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonError {
+    /// A non-finite float (`NaN` or `Infinity`) was encountered.
+    /// JSON does not support these values.
     NonFiniteNumber,
+    /// An I/O error occurred during serialization.
     Io,
 }
 
+/// Errors that can occur during JSON parsing.
+///
+/// Each variant includes context about where the error occurred,
+/// making it easier to debug invalid JSON.
+///
+/// # Example
+///
+/// ```
+/// use lifegraph_json::{parse_json, JsonParseError};
+///
+/// match parse_json("[1, 2,]") {
+///     Err(JsonParseError::UnexpectedCharacter { index, found }) => {
+///         println!("Unexpected '{}' at position {}", found, index);
+///     }
+///     other => panic!("Unexpected result: {:?}", other),
+/// }
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JsonParseError {
+    /// Input is not valid UTF-8.
     InvalidUtf8,
+    /// Input ended unexpectedly while parsing a value.
     UnexpectedEnd,
+    /// Trailing characters after a complete JSON value.
+    ///
+    /// The contained value is the byte offset of the first trailing character.
     UnexpectedTrailingCharacters(usize),
+    /// An unexpected character was found.
     UnexpectedCharacter {
+        /// Byte offset where the error occurred.
         index: usize,
+        /// The character that was found.
         found: char,
     },
+    /// An invalid literal was found (expected `true`, `false`, or `null`).
     InvalidLiteral {
+        /// Byte offset where the error occurred.
         index: usize,
     },
+    /// An invalid number was found.
     InvalidNumber {
+        /// Byte offset where the error occurred.
         index: usize,
     },
+    /// An invalid escape sequence was found in a string.
     InvalidEscape {
+        /// Byte offset where the error occurred.
         index: usize,
     },
+    /// An invalid Unicode escape sequence was found.
     InvalidUnicodeEscape {
+        /// Byte offset where the error occurred.
         index: usize,
     },
+    /// An invalid Unicode scalar value was found.
     InvalidUnicodeScalar {
+        /// Byte offset where the error occurred.
         index: usize,
     },
+    /// Expected a `:` after an object key.
     ExpectedColon {
+        /// Byte offset where the error occurred.
         index: usize,
     },
+    /// Expected `,` or end of array/object.
     ExpectedCommaOrEnd {
+        /// Byte offset where the error occurred.
         index: usize,
+        /// Whether we were parsing an "array" or "object".
         context: &'static str,
     },
     /// JSON nesting depth exceeds the maximum allowed (128)
-    NestingTooDeep {
-        depth: usize,
-        max: usize,
-    },
+    NestingTooDeep { depth: usize, max: usize },
 }
 
 impl fmt::Display for JsonError {

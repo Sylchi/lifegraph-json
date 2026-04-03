@@ -1,0 +1,399 @@
+# serde_json API Parity Report
+
+> **Auto-generated** by `cargo test --test api_parity_probe`
+> Do not edit manually - regenerated each CI run
+> serde_json source: `serde_json-1.0.149`
+
+## Summary
+
+- **serde_json top-level items found**: 144
+- **lifegraph-json top-level items found**: 184
+- **Core API items tracked**: 22
+
+- **Present in lifegraph-json**: 3 / 4 (75.0%)
+- **Missing**: 1
+
+## serde_json Public API (extracted)
+
+### Functions
+
+- `and_modify<F>`
+- `append`
+- `as_f64`
+- `as_i128`
+- `as_i64`
+- `as_str`
+- `as_u128`
+- `as_u64`
+- `byte_offset`
+- `classify`
+- `clear`
+- `col`
+- `column`
+- `contains_key<Q>`
+- `disable_recursion_limit`
+- `end`
+- `entry<S>`
+- `from_f64`
+- `from_i128`
+- `from_reader`
+- `from_reader<R, T>`
+- `from_slice`
+- `from_slice<'a, T>`
+- `from_str`
+- `from_str<'a, T>`
+- `from_string`
+- `from_string_unchecked`
+- `from_u128`
+- `get`
+- `get<Q>`
+- `get_key_value<Q>`
+- `get_mut`
+- `get_mut<Q>`
+- `insert`
+- `into_inner`
+- `into_iter<T>`
+- `into_mut`
+- `into_values`
+- `io`
+- `io_error_kind`
+- `is_data`
+- `is_empty`
+- `is_eof`
+- `is_f64`
+- `is_i64`
+- `is_io`
+- `is_syntax`
+- `is_u64`
+- `iter`
+- `iter_mut`
+- `key`
+- `keys`
+- `len`
+- `line`
+- `new`
+- `or_insert`
+- `or_insert_with<F>`
+- `pretty`
+- `remove`
+- `remove<Q>`
+- `remove_entry`
+- `remove_entry<Q>`
+- `retain<F>`
+- `shift_insert`
+- `shift_remove`
+- `shift_remove<Q>`
+- `shift_remove_entry`
+- `shift_remove_entry<Q>`
+- `sort_keys`
+- `swap_remove`
+- `swap_remove<Q>`
+- `swap_remove_entry`
+- `swap_remove_entry<Q>`
+- `to_raw_value<T>`
+- `to_string<T>`
+- `to_string_pretty<T>`
+- `to_vec<T>`
+- `to_vec_pretty<T>`
+- `to_writer<W, T>`
+- `to_writer_pretty<W, T>`
+- `values`
+- `values_mut`
+- `with_capacity`
+- `with_formatter`
+- `with_indent`
+- `add`
+- `bit_length`
+- `compare`
+- `from_float<F: Float>`
+- `get_extended_float`
+- `get_large`
+- `get_small`
+- `get_small_int`
+- `greater_equal`
+- `iadd`
+- `iadd_impl`
+- `imul`
+- `imul_pow5`
+- `ishl`
+- `ishl_bits`
+- `ishl_limbs`
+- `isub`
+- `isub_impl`
+- `karatsuba_split`
+- `leading_zeros`
+- `len`
+- `less`
+- `mul`
+- `nonzero<T: Integer>`
+- `normalize`
+- `parse_concise_float<F>`
+- `parse_truncated_float<F>`
+- `sub`
+- `as_array`
+- `as_array_mut`
+- `as_bool`
+- `as_f64`
+- `as_i64`
+- `as_null`
+- `as_number`
+- `as_object`
+- `as_object_mut`
+- `as_str`
+- `as_u64`
+- `from_value<T>`
+- `get<I: Index>`
+- `get_mut<I: Index>`
+- `is_array`
+- `is_boolean`
+- `is_f64`
+- `is_i64`
+- `is_null`
+- `is_number`
+- `is_object`
+- `is_string`
+- `is_u64`
+- `pointer`
+- `pointer_mut`
+- `sort_all_objects`
+- `take`
+- `to_value<T>`
+
+### Types
+
+- `Category` (enum)
+- `CharEscape` (enum)
+- `Compound` (enum)
+- `Entry` (enum)
+- `Reference` (enum)
+- `State` (enum)
+- `BorrowedRawDeserializer` (struct)
+- `BoxedFromString;` (struct)
+- `CompactFormatter;` (struct)
+- `Deserializer` (struct)
+- `Error` (struct)
+- `IntoIter` (struct)
+- `IntoValues` (struct)
+- `IoRead` (struct)
+- `Iter` (struct)
+- `IterMut` (struct)
+- `Keys` (struct)
+- `LineColIterator` (struct)
+- `Map` (struct)
+- `Number` (struct)
+- `NumberFromString` (struct)
+- `OccupiedEntry` (struct)
+- `OwnedRawDeserializer` (struct)
+- `Position` (struct)
+- `PrettyFormatter` (struct)
+- `RawValue` (struct)
+- `ReferenceFromString;` (struct)
+- `Serializer` (struct)
+- `SliceRead` (struct)
+- `StrRead` (struct)
+- `StreamDeserializer` (struct)
+- `VacantEntry` (struct)
+- `Values` (struct)
+- `ValuesMut` (struct)
+- `Result<T>` (type)
+- `ErrorKind` (enum)
+- `Error;` (struct)
+- `Result<T>` (type)
+- `Limb` (type)
+- `SerializeMap` (enum)
+- `Value` (enum)
+- `SerializeStructVariant` (struct)
+- `SerializeTupleVariant` (struct)
+- `SerializeVec` (struct)
+- `Serializer;` (struct)
+
+## lifegraph-json Public API (extracted)
+
+### Functions
+
+- `append`
+- `append_f64`
+- `append_i128`
+- `append_i64`
+- `append_u128`
+- `append_u64`
+- `array`
+- `as_array`
+- `as_array_mut`
+- `as_bool`
+- `as_f32`
+- `as_f64`
+- `as_i128`
+- `as_i64`
+- `as_null`
+- `as_number`
+- `as_object`
+- `as_object_mut`
+- `as_str`
+- `as_u128`
+- `as_u64`
+- `build_object_index`
+- `classify`
+- `column`
+- `contains_key`
+- `custom`
+- `decode_pointer_segment`
+- `end`
+- `escape_json_string`
+- `from_f64`
+- `from_i128`
+- `from_reader<R: Read>`
+- `from_reader<R: std::io::Read>`
+- `from_reader<T, R>`
+- `from_slice`
+- `from_slice<T>`
+- `from_str`
+- `from_str<T>`
+- `from_string`
+- `from_u128`
+- `from_value<T>`
+- `get`
+- `get<'a>`
+- `get<I>`
+- `get_compiled`
+- `get_compiled<'a>`
+- `get_compiled_many<'b>`
+- `get_index`
+- `get_index_mut`
+- `get_many<'b>`
+- `get_mut`
+- `get_mut<I>`
+- `get_or_insert_null`
+- `hash_key`
+- `index`
+- `initial_json_capacity`
+- `insert`
+- `into_owned`
+- `io`
+- `io_error_kind`
+- `is_array`
+- `is_boolean`
+- `is_data`
+- `is_empty`
+- `is_eof`
+- `is_f64`
+- `is_i64`
+- `is_io`
+- `is_null`
+- `is_number`
+- `is_object`
+- `is_string`
+- `is_syntax`
+- `is_u64`
+- `iter`
+- `iter_mut`
+- `json_error_to_serde`
+- `json_parse_error_to_serde`
+- `keys`
+- `kind`
+- `len`
+- `line`
+- `needs_escape`
+- `new`
+- `object`
+- `object_index_or_insert<'a>`
+- `object_schema`
+- `parse_json`
+- `parse_json_borrowed`
+- `parse_json_tape`
+- `parse_tape_value`
+- `parse_value`
+- `parse_value_borrowed`
+- `pointer`
+- `pointer_mut`
+- `push_field`
+- `push_item`
+- `remove`
+- `retain<F>`
+- `root<'a>`
+- `shift_insert`
+- `skip_whitespace`
+- `sort_all_objects`
+- `sort_keys`
+- `swap_remove`
+- `take`
+- `to_json_string`
+- `to_json_string<'a, I>`
+- `to_json_string<'a, R, I>`
+- `to_raw_value<T>`
+- `to_string`
+- `to_string<T: Serialize + ?Sized>`
+- `to_string<T>`
+- `to_string_pretty`
+- `to_string_pretty<T>`
+- `to_value<T>`
+- `to_vec`
+- `to_vec<T: Serialize + ?Sized>`
+- `to_vec<T>`
+- `to_vec_pretty`
+- `to_vec_pretty<T>`
+- `to_writer<T, W>`
+- `to_writer<W: Write>`
+- `to_writer_pretty<T, W>`
+- `to_writer_pretty<W: Write>`
+- `values`
+- `values_mut`
+- `with_index<'b>`
+- `write_escaped_json_string`
+- `write_json_array`
+- `write_json_bytes<'a, I>`
+- `write_json_bytes<'a, R, I>`
+- `write_json_key`
+- `write_json_number`
+- `write_json_object`
+- `write_json_value`
+- `write_json_value_pretty`
+- `write_row_json_bytes<'a, I>`
+
+### Types
+
+- `BorrowedJsonValue` (enum)
+- `Category` (enum)
+- `JsonError` (enum)
+- `JsonNumber` (enum)
+- `JsonParseError` (enum)
+- `JsonValue` (enum)
+- `TapeTokenKind` (enum)
+- `BorrowedRawDeserializer` (struct)
+- `BoxedFromString;` (struct)
+- `CompiledObjectSchema` (struct)
+- `CompiledRowSchema` (struct)
+- `CompiledTapeKey` (struct)
+- `CompiledTapeKeys` (struct)
+- `Deserializer` (struct)
+- `Error` (struct)
+- `IndexedTapeObject` (struct)
+- `JsonArraySerializer` (struct)
+- `JsonObjectSerializer` (struct)
+- `JsonStructVariantSerializer` (struct)
+- `JsonTape` (struct)
+- `JsonTupleVariantSerializer` (struct)
+- `JsonValueDeserializer` (struct)
+- `JsonValueSerializer;` (struct)
+- `Map(pub(crate)` (struct)
+- `NumberFromString;` (struct)
+- `OwnedRawDeserializer` (struct)
+- `RawValue(str);` (struct)
+- `ReferenceFromString;` (struct)
+- `StreamingMapSerializer` (struct)
+- `StreamingSeqSerializer` (struct)
+- `StreamingSerializer` (struct)
+- `StreamingStructSerializer` (struct)
+- `StreamingStructVariantSerializer` (struct)
+- `StreamingTupleVariantSerializer` (struct)
+- `TapeObjectIndex` (struct)
+- `TapeToken` (struct)
+- `TapeValue` (struct)
+- `Number` (type)
+- `Result<T,` (type)
+- `Value` (type)
+
+## Missing APIs
+
+- **fn from_reader**
+
