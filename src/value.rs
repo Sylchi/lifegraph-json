@@ -4,8 +4,9 @@ use crate::util;
 use crate::ValueIndex;
 use std::fmt;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum JsonValue {
+    #[default]
     Null,
     Bool(bool),
     Number(JsonNumber),
@@ -16,12 +17,6 @@ pub enum JsonValue {
 
 pub type Value = JsonValue;
 pub type Number = JsonNumber;
-
-impl Default for JsonValue {
-    fn default() -> Self {
-        Self::Null
-    }
-}
 
 impl Eq for JsonValue {}
 
