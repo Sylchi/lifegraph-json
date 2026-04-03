@@ -64,7 +64,6 @@ impl<'a> Parser<'a> {
         // Check depth before parsing nested structures
         match self.peek_byte() {
             Some(b'[' | b'{') => {
-                eprintln!("DEBUG: depth={} max_depth={}", self.depth, self.max_depth);
                 if self.depth >= self.max_depth {
                     return Err(JsonParseError::NestingTooDeep {
                         depth: self.depth,
@@ -677,8 +676,8 @@ impl<'a> Parser<'a> {
             let byte = self.next_byte().unwrap();
             let digit = match byte {
                 b'0'..=b'9' => byte - b'0',
-                b'A'..=b'Z' => byte - b'A' + 10,
-                b'A'..=b'Z' => byte - b'A' + 10,
+                b'A'..=b'F' => byte - b'A' + 10,
+                b'a'..=b'f' => byte - b'a' + 10,
                 _ => {
                     return Err(JsonParseError::InvalidUnicodeEscape { index: start });
                 }
