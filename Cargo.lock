@@ -21,7 +21,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_bytes",
- "serde_json_upstream",
+ "serde_json",
  "ts-rs",
 ]
 
@@ -129,17 +129,6 @@ name = "serde_json"
 version = "1.0.149"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
-dependencies = [
- "itoa",
- "memchr",
- "serde",
- "serde_core",
- "zmij",
-]
-
-[[package]]
-name = "serde_json_upstream"
-version = "1.0.149"
 dependencies = [
  "itoa",
  "memchr",

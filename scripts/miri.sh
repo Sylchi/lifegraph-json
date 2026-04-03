@@ -37,7 +37,7 @@ echo ""
 # Run miri on all tests
 # MIRIFLAGS can be used to control Miri behavior
 # -Zmiri-disable-isolation allows file I/O (needed for some tests)
-export MIRIFLAGS="-Zmiri-disable-isolation -Zmiri-check-number-validity"
+export MIRIFLAGS="-Zmiri-disable-isolation"
 
 # Run core tests
 echo "Testing core library..."

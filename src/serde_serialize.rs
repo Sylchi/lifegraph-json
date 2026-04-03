@@ -1,13 +1,10 @@
 use crate::serde_error::{self, Error};
-use crate::{
-    initial_json_capacity, write_json_value, write_json_value_pretty, JsonNumber, JsonValue, Map,
-};
+use crate::{JsonNumber, JsonValue, Map};
 use serde_crate::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant,
 };
 use serde_crate::{Serialize, Serializer as SerdeSerializer};
-use std::io::Write;
 
 pub struct JsonValueSerializer;
 

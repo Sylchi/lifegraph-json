@@ -1,7 +1,7 @@
 #![cfg(all(feature = "serde", feature = "raw_value"))]
 
 use lifegraph_json as serde_json;
-use serde_crate::{Deserialize, Serialize};
+use serde_crate::Serialize;
 use serde_json::{from_str, to_raw_value, to_string, Map, RawValue, Value};
 
 #[test]

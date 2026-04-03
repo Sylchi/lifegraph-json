@@ -1,12 +1,11 @@
 use crate::serde_error::Error;
-use crate::{JsonParseError, JsonValue};
+use crate::JsonParseError;
 use serde_crate::de::{
     value::StringDeserializer, DeserializeSeed, Deserializer as SerdeDeserializer, MapAccess,
     Visitor,
 };
 use serde_crate::ser::SerializeStruct;
 use serde_crate::{Deserialize, Serialize};
-use std::borrow::Cow;
 
 pub const RAW_VALUE_TOKEN: &str = "$serde_json::private::RawValue";
 
@@ -82,6 +81,7 @@ pub struct BorrowedRawDeserializer<'de> {
 }
 
 impl<'de> BorrowedRawDeserializer<'de> {
+    #[expect(dead_code)]
     pub fn new(raw_value: &'de str) -> Self {
         Self {
             raw_value: Some(raw_value),

@@ -1,7 +1,7 @@
 #![feature(test)]
 extern crate test;
 
-use serde_json::{
+use lifegraph_json::{
     from_str, parse_json_borrowed, parse_json_tape, to_string, to_vec, CompiledTapeKeys, JsonValue,
     Map,
 };
@@ -52,7 +52,7 @@ fn medium_object() -> JsonValue {
 }
 
 fn array_of_ints() -> JsonValue {
-    JsonValue::Array((0..100).map(|i| JsonValue::from(i)).collect())
+    JsonValue::Array((0..100).map(JsonValue::from).collect())
 }
 
 fn nested_arrays() -> JsonValue {

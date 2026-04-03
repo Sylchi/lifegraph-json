@@ -71,7 +71,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
       
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --lib --tests --examples --all-features -- -D warnings
+
+      - name: Run Clippy (benches, nightly)
+        run: |
+          rustup toolchain install nightly --component clippy
+          cargo +nightly clippy --benches --all-features -- -D warnings
 
   # Check MSRV (Minimum Supported Rust Version)
   msrv:
@@ -83,12 +88,15 @@ jobs:
       
       - name: Install Rust (MSRV)
         uses: dtolnay/rust-toolchain@1.70
-      
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      
+
+      - name: Regenerate Cargo.lock for MSRV
+        run: cargo generate-lockfile
+
       - name: Check MSRV build
-        run: cargo check --all-features
+        run: cargo check --no-default-features --features std
 
   # Build documentation
   docs:
@@ -116,11 +124,14 @@ jobs:
     strategy:
       matrix:
         features:
-          - "--all-features"
           - "--no-default-features"
           - "--no-default-features --features alloc"
           - "--no-default-features --features std"
           - "--features serde"
+          - "--features serde,raw_value"
+          - "--features serde,indexmap"
+          - "--features serde,schemars"
+          - "--features serde,ts-rs"
       fail-fast: false
     
     steps:

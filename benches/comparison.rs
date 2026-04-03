@@ -1,7 +1,8 @@
+#![cfg(feature = "serde_json_bench")]
 #![feature(test)]
 extern crate test;
 
-use serde_json::{from_str, to_string, to_vec, JsonValue, Map};
+use lifegraph_json::{from_str, to_string, JsonValue, Map};
 use test::{black_box, Bencher};
 
 // ============= SERIALIZATION BENCHMARKS =============
@@ -216,7 +217,7 @@ fn medium_object() -> JsonValue {
 }
 
 fn array_of_ints() -> JsonValue {
-    JsonValue::Array((0..100).map(|i| JsonValue::from(i)).collect())
+    JsonValue::Array((0..100).map(JsonValue::from).collect())
 }
 
 fn nested_arrays() -> JsonValue {
