@@ -1,5 +1,7 @@
+use crate::map::Map;
+use crate::parse::Parser;
 use crate::serde_error::json_parse_error_to_serde;
-use crate::{JsonNumber, JsonValue, Map, Parser};
+use crate::{JsonNumber, JsonValue};
 use serde_crate::de::{
     value::StringDeserializer, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess,
     Visitor,
@@ -71,7 +73,7 @@ impl<'de> Deserializer<'de> {
         } else {
             Err(json_parse_error_to_serde(
                 self.remaining_input(),
-                crate::JsonParseError::UnexpectedTrailingCharacters(parser.index),
+                crate::JsonParseError::UnexpectedTrailingCharacters(parser.index()),
             ))
         }
     }
@@ -93,7 +95,7 @@ impl<'de> Deserializer<'de> {
             .parse_value()
             .map_err(|error| json_parse_error_to_serde(remaining, error))?;
         parser.skip_whitespace();
-        self.offset += parser.index;
+        self.offset += parser.index();
         Ok(value)
     }
 }
@@ -226,8 +228,8 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
             }
             JsonValue::Object(obj) => {
                 let map: Map = obj;
-                let len = map.0.len();
-                let seq: Vec<(String, JsonValue)> = map.0.into_iter().collect();
+                let len = map.len();
+                let seq: Vec<(String, JsonValue)> = map.into_vec().into_iter().collect();
                 let mut map_access = JsonMapAccess {
                     iter: seq.into_iter(),
                     len,
@@ -454,8 +456,8 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         match self.value {
             JsonValue::Object(obj) => {
                 let map: Map = obj;
-                let len = map.0.len();
-                let seq: Vec<(String, JsonValue)> = map.0.into_iter().collect();
+                let len = map.len();
+                let seq: Vec<(String, JsonValue)> = map.into_vec().into_iter().collect();
                 let mut map_access = JsonMapAccess {
                     iter: seq.into_iter(),
                     len,
@@ -609,7 +611,7 @@ impl<'de> Visitor<'de> for ValueVisitor {
     {
         let mut obj = Map::new();
         while let Some((key, value)) = map.next_entry()? {
-            obj.0.push((key, value));
+            obj.push_entry((key, value));
         }
         Ok(JsonValue::Object(obj))
     }
@@ -698,7 +700,7 @@ impl<'de> Visitor<'de> for MapVisitor {
     {
         let mut obj = Map::new();
         while let Some((key, value)) = map.next_entry()? {
-            obj.0.push((key, value));
+            obj.push_entry((key, value));
         }
         Ok(obj)
     }

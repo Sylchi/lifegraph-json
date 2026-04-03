@@ -1,15 +1,16 @@
-use crate::{JsonParseError, JsonValue};
-use crate::tape::{BorrowedJsonValue, JsonTape, TapeToken, TapeTokenKind};
+use crate::borrowed_value::BorrowedJsonValue;
+use crate::error::JsonParseError;
+use crate::map::Map;
+use crate::number::JsonNumber;
+use crate::tape::{TapeToken, TapeTokenKind};
+use crate::JsonValue;
 use std::borrow::Cow;
 
-pub struct Parser<'a> {
-    pub input: &'a str,
+pub(crate) struct Parser<'a> {
+    input: &'a str,
     bytes: &'a [u8],
-    pub index: usize,
-    pub offset: usize,
-    pub failed: bool,
-    pub error: Option<JsonParseError>,
-    pub depth: usize,
+    index: usize,
+    depth: usize,
     max_depth: usize,
 }
 
@@ -19,124 +20,79 @@ impl<'a> Parser<'a> {
             input,
             bytes: input.as_bytes(),
             index: 0,
-            offset: 0,
-            failed: false,
-            error: None,
             depth: 0,
-            max_depth: 10000, // Match serde_json's default
-        }
-    }
-
-    pub fn from_string(input: String) -> Self {
-        let input: &'static str = Box::leak(input.into_boxed_str());
-        Self {
-            input,
-            bytes: input.as_bytes(),
-            index: 0,
-            offset: 0,
-            failed: false,
-            error: None,
-            depth: 0,
-            max_depth: 10000,
-        }
-    }
-
-    #[cfg(feature = "std")]
-    pub fn from_reader<R: std::io::Read>(mut reader: R) -> Self {
-        let mut input = String::new();
-        match reader.read_to_string(&mut input) {
-            Ok(_) => Self::from_string(input),
-            Err(_) => Self {
-                input: "",
-                bytes: b"",
-                index: 0,
-                offset: 0,
-                failed: true,
-                error: Some(crate::error::JsonParseError::InvalidUtf8),
-                depth: 0,
-                max_depth: 10000,
-            },
+            max_depth: 128,
         }
     }
 
     pub fn parse_value(&mut self) -> Result<JsonValue, JsonParseError> {
         self.skip_whitespace();
-        // Check depth before parsing nested structures
-        match self.peek_byte() {
-            Some(b'[' | b'{') => {
-                if self.depth >= self.max_depth {
-                    return Err(JsonParseError::NestingTooDeep {
-                        depth: self.depth,
-                        max: self.max_depth,
-                    });
-                }
-                self.depth += 1;
+        let is_nested = matches!(self.peek_byte(), Some(b'[' | b'{'));
+        if is_nested {
+            if self.depth >= self.max_depth {
+                return Err(JsonParseError::NestingTooDeep {
+                    depth: self.depth,
+                    max: self.max_depth,
+                });
             }
-            _ => {}
+            self.depth += 1;
         }
-        
-        match self.peek_byte() {
+
+        let result = match self.peek_byte() {
             Some(b'n') => self.parse_literal(b"null", JsonValue::Null),
             Some(b't') => self.parse_literal(b"true", JsonValue::Bool(true)),
             Some(b'f') => self.parse_literal(b"false", JsonValue::Bool(false)),
             Some(b'"') => Ok(JsonValue::String(self.parse_string()?)),
-            Some(b'[') => {
-                let result = self.parse_array();
-                self.depth -= 1;
-                result
-            }
-            Some(b'{') => {
-                let result = self.parse_object();
-                self.depth -= 1;
-                result
-            }
+            Some(b'[') => self.parse_array(),
+            Some(b'{') => self.parse_object(),
             Some(b'-' | b'0'..=b'9') => self.parse_number().map(JsonValue::Number),
             Some(found) => Err(JsonParseError::UnexpectedCharacter {
                 index: self.index,
                 found: found as char,
             }),
             None => Err(JsonParseError::UnexpectedEnd),
+        };
+
+        if is_nested {
+            self.depth -= 1;
         }
+
+        result
     }
 
     pub fn parse_value_borrowed(&mut self) -> Result<BorrowedJsonValue<'a>, JsonParseError> {
         self.skip_whitespace();
-        // Check depth before parsing nested structures
-        match self.peek_byte() {
-            Some(b'[' | b'{') => {
-                if self.depth >= self.max_depth {
-                    return Err(JsonParseError::NestingTooDeep {
-                        depth: self.depth,
-                        max: self.max_depth,
-                    });
-                }
-                self.depth += 1;
+        let is_nested = matches!(self.peek_byte(), Some(b'[' | b'{'));
+        if is_nested {
+            if self.depth >= self.max_depth {
+                return Err(JsonParseError::NestingTooDeep {
+                    depth: self.depth,
+                    max: self.max_depth,
+                });
             }
-            _ => {}
+            self.depth += 1;
         }
-        
-        match self.peek_byte() {
+
+        let result = match self.peek_byte() {
             Some(b'n') => self.parse_literal_borrowed(b"null", BorrowedJsonValue::Null),
             Some(b't') => self.parse_literal_borrowed(b"true", BorrowedJsonValue::Bool(true)),
             Some(b'f') => self.parse_literal_borrowed(b"false", BorrowedJsonValue::Bool(false)),
             Some(b'"') => Ok(BorrowedJsonValue::String(self.parse_string_borrowed()?)),
-            Some(b'[') => {
-                let result = self.parse_array_borrowed();
-                self.depth -= 1;
-                result
-            }
-            Some(b'{') => {
-                let result = self.parse_object_borrowed();
-                self.depth -= 1;
-                result
-            }
+            Some(b'[') => self.parse_array_borrowed(),
+            Some(b'{') => self.parse_object_borrowed(),
             Some(b'-' | b'0'..=b'9') => self.parse_number().map(BorrowedJsonValue::Number),
             Some(found) => Err(JsonParseError::UnexpectedCharacter {
                 index: self.index,
                 found: found as char,
             }),
             None => Err(JsonParseError::UnexpectedEnd),
+        };
+
+        if is_nested {
+            self.depth -= 1;
         }
+
+        result
     }
 
     pub fn parse_tape_value(
@@ -145,7 +101,18 @@ impl<'a> Parser<'a> {
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
         self.skip_whitespace();
-        match self.peek_byte() {
+        let is_nested = matches!(self.peek_byte(), Some(b'[' | b'{'));
+        if is_nested {
+            if self.depth >= self.max_depth {
+                return Err(JsonParseError::NestingTooDeep {
+                    depth: self.depth,
+                    max: self.max_depth,
+                });
+            }
+            self.depth += 1;
+        }
+
+        let result = match self.peek_byte() {
             Some(b'n') => self.parse_tape_literal(tokens, parent, b"null", TapeTokenKind::Null),
             Some(b't') => self.parse_tape_literal(tokens, parent, b"true", TapeTokenKind::Bool),
             Some(b'f') => self.parse_tape_literal(tokens, parent, b"false", TapeTokenKind::Bool),
@@ -158,7 +125,13 @@ impl<'a> Parser<'a> {
                 found: found as char,
             }),
             None => Err(JsonParseError::UnexpectedEnd),
+        };
+
+        if is_nested {
+            self.depth -= 1;
         }
+
+        result
     }
 
     fn parse_literal(
@@ -263,15 +236,6 @@ impl<'a> Parser<'a> {
         tokens: &mut Vec<TapeToken>,
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
-        // Check depth before parsing
-        if self.depth >= self.max_depth {
-            return Err(JsonParseError::NestingTooDeep {
-                depth: self.depth,
-                max: self.max_depth,
-            });
-        }
-        self.depth += 1;
-        
         let start = self.index;
         self.consume_byte(b'[')?;
         let token_index = tokens.len();
@@ -284,7 +248,6 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.try_consume_byte(b']') {
             tokens[token_index].end = self.index;
-            self.depth -= 1;
             return Ok(token_index);
         }
         loop {
@@ -303,14 +266,13 @@ impl<'a> Parser<'a> {
             self.skip_whitespace();
         }
         tokens[token_index].end = self.index;
-        self.depth -= 1;
         Ok(token_index)
     }
 
     fn parse_object(&mut self) -> Result<JsonValue, JsonParseError> {
         self.consume_byte(b'{')?;
         self.skip_whitespace();
-        let mut entries = crate::Map::new();
+        let mut entries = Map::new();
         if self.try_consume_byte(b'}') {
             return Ok(JsonValue::Object(entries));
         }
@@ -390,15 +352,6 @@ impl<'a> Parser<'a> {
         tokens: &mut Vec<TapeToken>,
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
-        // Check depth before parsing
-        if self.depth >= self.max_depth {
-            return Err(JsonParseError::NestingTooDeep {
-                depth: self.depth,
-                max: self.max_depth,
-            });
-        }
-        self.depth += 1;
-        
         let start = self.index;
         self.consume_byte(b'{')?;
         let token_index = tokens.len();
@@ -411,7 +364,6 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.try_consume_byte(b'}') {
             tokens[token_index].end = self.index;
-            self.depth -= 1;
             return Ok(token_index);
         }
         loop {
@@ -444,7 +396,6 @@ impl<'a> Parser<'a> {
             self.skip_whitespace();
         }
         tokens[token_index].end = self.index;
-        self.depth -= 1;
         Ok(token_index)
     }
 
@@ -543,18 +494,18 @@ impl<'a> Parser<'a> {
                                 if self.next_byte() != Some(b'\\') || self.next_byte() != Some(b'u')
                                 {
                                     return Err(JsonParseError::InvalidUnicodeScalar {
-                                        index: self.index,
+                                        index: escape_index,
                                     });
                                 }
                                 let low = self.parse_hex_quad(escape_index)?;
                                 if !(0xDC00..=0xDFFF).contains(&low) {
                                     return Err(JsonParseError::InvalidUnicodeScalar {
-                                        index: self.index,
+                                        index: escape_index,
                                     });
                                 }
                             } else if (0xDC00..=0xDFFF).contains(&scalar) {
                                 return Err(JsonParseError::InvalidUnicodeScalar {
-                                    index: self.index,
+                                    index: escape_index,
                                 });
                             }
                         }
@@ -641,91 +592,111 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_escape_into(&mut self, out: &mut String, start: usize) -> Result<(), JsonParseError> {
-        let Some(byte) = self.next_byte() else {
-            return Err(JsonParseError::UnexpectedEnd);
-        };
-        match byte {
+    fn parse_escape_into(
+        &mut self,
+        out: &mut String,
+        escape_index: usize,
+    ) -> Result<(), JsonParseError> {
+        let escaped = self.next_byte().ok_or(JsonParseError::UnexpectedEnd)?;
+        match escaped {
             b'"' => out.push('"'),
             b'\\' => out.push('\\'),
             b'/' => out.push('/'),
-            b'b' => out.push('\x08'),
-            b'f' => out.push('\x0c'),
+            b'b' => out.push('\u{0008}'),
+            b'f' => out.push('\u{000C}'),
             b'n' => out.push('\n'),
             b'r' => out.push('\r'),
             b't' => out.push('\t'),
-            b'u' => {
-                let scalar = self.parse_hex_quad(start)?;
-                out.push(char::from_u32(scalar).ok_or(JsonParseError::InvalidUnicodeScalar {
-                    index: self.index,
-                })?);
-            }
+            b'u' => out.push(self.parse_unicode_escape(escape_index)?),
             _ => {
-                return Err(JsonParseError::InvalidEscape { index: start });
+                return Err(JsonParseError::InvalidEscape {
+                    index: escape_index,
+                })
             }
         }
         Ok(())
     }
 
-    fn parse_hex_quad(&mut self, start: usize) -> Result<u32, JsonParseError> {
-        if self.index + 4 > self.bytes.len() {
-            return Err(JsonParseError::InvalidUnicodeEscape { index: start });
+    fn parse_unicode_escape(&mut self, index: usize) -> Result<char, JsonParseError> {
+        let scalar = self.parse_hex_quad(index)?;
+        if (0xD800..=0xDBFF).contains(&scalar) {
+            if self.next_byte() != Some(b'\\') || self.next_byte() != Some(b'u') {
+                return Err(JsonParseError::InvalidUnicodeScalar { index });
+            }
+            let low = self.parse_hex_quad(index)?;
+            if !(0xDC00..=0xDFFF).contains(&low) {
+                return Err(JsonParseError::InvalidUnicodeScalar { index });
+            }
+            let high = scalar - 0xD800;
+            let low = low - 0xDC00;
+            let combined = 0x10000 + ((high << 10) | low);
+            char::from_u32(combined).ok_or(JsonParseError::InvalidUnicodeScalar { index })
+        } else if (0xDC00..=0xDFFF).contains(&scalar) {
+            Err(JsonParseError::InvalidUnicodeScalar { index })
+        } else {
+            char::from_u32(scalar).ok_or(JsonParseError::InvalidUnicodeScalar { index })
         }
+    }
+
+    fn parse_hex_quad(&mut self, index: usize) -> Result<u32, JsonParseError> {
         let mut value = 0u32;
         for _ in 0..4 {
-            let byte = self.next_byte().unwrap();
-            let digit = match byte {
-                b'0'..=b'9' => byte - b'0',
-                b'A'..=b'F' => byte - b'A' + 10,
-                b'a'..=b'f' => byte - b'a' + 10,
-                _ => {
-                    return Err(JsonParseError::InvalidUnicodeEscape { index: start });
-                }
+            let ch = self.next_byte().ok_or(JsonParseError::UnexpectedEnd)?;
+            let digit = match ch {
+                b'0'..=b'9' => (ch - b'0') as u32,
+                b'a'..=b'f' => 10 + (ch - b'a') as u32,
+                b'A'..=b'F' => 10 + (ch - b'A') as u32,
+                _ => return Err(JsonParseError::InvalidUnicodeEscape { index }),
             };
-            value = (value << 4) | digit as u32;
+            value = (value << 4) | digit;
         }
         Ok(value)
     }
 
-    fn parse_number(&mut self) -> Result<crate::JsonNumber, JsonParseError> {
+    fn parse_number(&mut self) -> Result<JsonNumber, JsonParseError> {
         let start = self.index;
-        let negative = self.try_consume_byte(b'-');
-        let start_digits = self.index;
-        self.consume_digits();
-        let end = self.index;
-        let end_with_dot = end;
-        let has_exponent = if matches!(self.peek_byte(), Some(b'e') | Some(b'E')) {
+        self.try_consume_byte(b'-');
+        if self.try_consume_byte(b'0') {
+            if matches!(self.peek_byte(), Some(b'0'..=b'9')) {
+                return Err(JsonParseError::InvalidNumber { index: start });
+            }
+        } else {
+            self.consume_digits(start)?;
+        }
+
+        let mut is_float = false;
+        if self.try_consume_byte(b'.') {
+            is_float = true;
+            self.consume_digits(start)?;
+        }
+        if matches!(self.peek_byte(), Some(b'e' | b'E')) {
+            is_float = true;
             self.index += 1;
-            if matches!(self.peek_byte(), Some(b'+') | Some(b'-')) {
+            if matches!(self.peek_byte(), Some(b'+' | b'-')) {
                 self.index += 1;
             }
-            let exp_start = self.index;
-            self.consume_digits();
-            self.index > exp_start
-        } else {
-            false
-        };
-        let value = &self.input[start_digits..end];
-        if end_with_dot == start_digits {
-            return Err(JsonParseError::InvalidNumber { index: start });
+            self.consume_digits(start)?;
         }
-        if !has_exponent && end == end_with_dot {
-            if negative {
-                let Ok(val) = value.parse::<i64>() else {
-                    return Err(JsonParseError::InvalidNumber { index: start });
-                };
-                Ok(crate::JsonNumber::I64(val))
-            } else {
-                let Ok(val) = value.parse::<u64>() else {
-                    return Err(JsonParseError::InvalidNumber { index: start });
-                };
-                Ok(crate::JsonNumber::U64(val))
-            }
-        } else {
-            let Ok(val) = value.parse::<f64>() else {
+
+        let token = &self.input[start..self.index];
+        if is_float {
+            let value = token
+                .parse::<f64>()
+                .map_err(|_| JsonParseError::InvalidNumber { index: start })?;
+            if !value.is_finite() {
                 return Err(JsonParseError::InvalidNumber { index: start });
-            };
-            Ok(crate::JsonNumber::F64(val))
+            }
+            Ok(JsonNumber::F64(value))
+        } else if token.starts_with('-') {
+            let value = token
+                .parse::<i64>()
+                .map_err(|_| JsonParseError::InvalidNumber { index: start })?;
+            Ok(JsonNumber::I64(value))
+        } else {
+            let value = token
+                .parse::<u64>()
+                .map_err(|_| JsonParseError::InvalidNumber { index: start })?;
+            Ok(JsonNumber::U64(value))
         }
     }
 
@@ -735,22 +706,7 @@ impl<'a> Parser<'a> {
         parent: Option<usize>,
     ) -> Result<usize, JsonParseError> {
         let start = self.index;
-        let _ = self.try_consume_byte(b'-');
-        let start_digits = self.index;
-        self.consume_digits();
-        let end = self.index;
-        let end_with_dot = end;
-        let has_exponent = if matches!(self.peek_byte(), Some(b'e') | Some(b'E')) {
-            self.index += 1;
-            if matches!(self.peek_byte(), Some(b'+') | Some(b'-')) {
-                self.index += 1;
-            }
-            let exp_start = self.index;
-            self.consume_digits();
-            self.index > exp_start
-        } else {
-            false
-        };
+        let _ = self.parse_number()?;
         let token_index = tokens.len();
         tokens.push(TapeToken {
             kind: TapeTokenKind::Number,
@@ -758,23 +714,37 @@ impl<'a> Parser<'a> {
             end: self.index,
             parent,
         });
-        if end_with_dot == start_digits {
-            return Err(JsonParseError::InvalidNumber { index: start });
+        Ok(token_index)
+    }
+
+    fn consume_digits(&mut self, index: usize) -> Result<(), JsonParseError> {
+        let start = self.index;
+        while matches!(self.peek_byte(), Some(b'0'..=b'9')) {
+            self.index += 1;
         }
-        if !has_exponent && end == end_with_dot {
-            Ok(token_index)
-        } else {
-            let value = &self.input[start_digits..end];
-            let Ok(_) = value.parse::<f64>() else {
-                return Err(JsonParseError::InvalidNumber { index: start });
-            };
-            Ok(token_index)
+        if self.index == start {
+            return Err(JsonParseError::InvalidNumber { index });
+        }
+        Ok(())
+    }
+
+    fn consume_byte(&mut self, expected: u8) -> Result<(), JsonParseError> {
+        match self.next_byte() {
+            Some(found) if found == expected => Ok(()),
+            Some(found) => Err(JsonParseError::UnexpectedCharacter {
+                index: self.index.saturating_sub(1),
+                found: found as char,
+            }),
+            None => Err(JsonParseError::UnexpectedEnd),
         }
     }
 
-    fn consume_digits(&mut self) {
-        while matches!(self.peek_byte(), Some(b'0'..=b'9')) {
+    fn try_consume_byte(&mut self, expected: u8) -> bool {
+        if self.peek_byte() == Some(expected) {
             self.index += 1;
+            true
+        } else {
+            false
         }
     }
 
@@ -789,79 +759,16 @@ impl<'a> Parser<'a> {
     }
 
     fn next_byte(&mut self) -> Option<u8> {
-        let byte = self.bytes.get(self.index).copied();
-        if byte.is_some() {
-            self.index += 1;
-        }
-        byte
+        let byte = self.peek_byte()?;
+        self.index += 1;
+        Some(byte)
     }
 
-    fn try_consume_byte(&mut self, byte: u8) -> bool {
-        if self.peek_byte() == Some(byte) {
-            self.index += 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn consume_byte(&mut self, byte: u8) -> Result<(), JsonParseError> {
-        if self.try_consume_byte(byte) {
-            Ok(())
-        } else {
-            Err(JsonParseError::UnexpectedCharacter {
-                index: self.index,
-                found: byte as char,
-            })
-        }
+    pub fn index(&self) -> usize {
+        self.index
     }
 
     pub fn is_eof(&self) -> bool {
-        self.index >= self.bytes.len()
-    }
-}
-
-pub fn parse_json(input: &str) -> Result<JsonValue, JsonParseError> {
-    let mut parser = Parser::new(input);
-    let value = parser.parse_value()?;
-    parser.skip_whitespace();
-    if parser.is_eof() {
-        Ok(value)
-    } else {
-        Err(JsonParseError::UnexpectedTrailingCharacters(parser.index))
-    }
-}
-
-pub fn parse_json_borrowed(input: &str) -> Result<BorrowedJsonValue<'_>, JsonParseError> {
-    let mut parser = Parser::new(input);
-    let value = parser.parse_value_borrowed()?;
-    parser.skip_whitespace();
-    if parser.is_eof() {
-        Ok(value)
-    } else {
-        Err(JsonParseError::UnexpectedTrailingCharacters(parser.index))
-    }
-}
-
-pub fn parse_json_tape(input: &str) -> Result<JsonTape, JsonParseError> {
-    let mut parser = Parser::new(input);
-    let mut tokens = Vec::new();
-    parser.parse_tape_value(&mut tokens, None)?;
-    parser.skip_whitespace();
-    if parser.is_eof() {
-        Ok(JsonTape { tokens })
-    } else {
-        Err(JsonParseError::UnexpectedTrailingCharacters(parser.index))
-    }
-}
-
-pub fn parse_string_token_borrowed(input: &str) -> Result<Cow<'_, str>, JsonParseError> {
-    let mut parser = Parser::new(input);
-    let value = parser.parse_string_borrowed()?;
-    parser.skip_whitespace();
-    if parser.is_eof() {
-        Ok(value)
-    } else {
-        Err(JsonParseError::UnexpectedTrailingCharacters(parser.index))
+        self.index >= self.input.len()
     }
 }

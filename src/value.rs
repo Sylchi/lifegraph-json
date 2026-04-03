@@ -1,131 +1,12 @@
-use crate::error::{JsonError, JsonParseError};
-use crate::parse::Parser;
-use crate::tape::{BorrowedJsonValue, TapeToken, TapeTokenKind};
-use core::fmt;
-use std::borrow::Cow;
-use std::fmt::{Debug, Display};
-use std::hash::Hash;
-use std::io::Write;
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use crate::map::Map;
+use crate::number::JsonNumber;
+use crate::util;
+use crate::ValueIndex;
+use std::fmt;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum JsonNumber {
-    I64(i64),
-    U64(u64),
-    F64(f64),
-}
-
-impl JsonNumber {
-    pub fn from_i128(value: i128) -> Option<Self> {
-        if let Ok(value) = u64::try_from(value) {
-            Some(Self::U64(value))
-        } else if let Ok(value) = i64::try_from(value) {
-            Some(Self::I64(value))
-        } else {
-            None
-        }
-    }
-
-    pub fn from_u128(value: u128) -> Option<Self> {
-        u64::try_from(value).ok().map(Self::U64)
-    }
-
-    pub fn is_i64(&self) -> bool {
-        match self {
-            Self::I64(_) => true,
-            Self::U64(value) => *value <= i64::MAX as u64,
-            Self::F64(_) => false,
-        }
-    }
-
-    pub fn is_u64(&self) -> bool {
-        matches!(self, Self::U64(_))
-    }
-
-    pub fn is_f64(&self) -> bool {
-        matches!(self, Self::F64(_))
-    }
-
-    pub fn as_i64(&self) -> Option<i64> {
-        match self {
-            Self::I64(value) => Some(*value),
-            Self::U64(value) => (*value <= i64::MAX as u64).then_some(*value as i64),
-            Self::F64(_) => None,
-        }
-    }
-
-    pub fn as_i128(&self) -> Option<i128> {
-        match self {
-            Self::I64(value) => Some(*value as i128),
-            Self::U64(value) => Some(*value as i128),
-            Self::F64(_) => None,
-        }
-    }
-
-    pub fn as_u64(&self) -> Option<u64> {
-        match self {
-            Self::I64(value) => (*value >= 0).then_some(*value as u64),
-            Self::U64(value) => Some(*value),
-            Self::F64(_) => None,
-        }
-    }
-
-    pub fn as_u128(&self) -> Option<u128> {
-        match self {
-            Self::I64(value) => (*value >= 0).then_some(*value as u128),
-            Self::U64(value) => Some(*value as u128),
-            Self::F64(_) => None,
-        }
-    }
-
-    pub fn as_f64(&self) -> Option<f64> {
-        match self {
-            Self::I64(value) => Some(*value as f64),
-            Self::U64(value) => Some(*value as f64),
-            Self::F64(value) => Some(*value),
-        }
-    }
-
-    pub fn from_f64(value: f64) -> Option<Self> {
-        value.is_finite().then_some(Self::F64(value))
-    }
-
-    pub fn from_string_unchecked(n: String) -> Self {
-        match Parser::new(&n).parse_value() {
-            Ok(JsonValue::Number(number)) => number,
-            _ => panic!("from_string_unchecked called with non-number JSON"),
-        }
-    }
-}
-
-impl Display for JsonNumber {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::I64(value) => write!(f, "{value}"),
-            Self::U64(value) => write!(f, "{value}"),
-            Self::F64(value) => write!(f, "{value}"),
-        }
-    }
-}
-
-impl From<i64> for JsonNumber {
-    fn from(value: i64) -> Self {
-        if value >= 0 {
-            Self::U64(value as u64)
-        } else {
-            Self::I64(value)
-        }
-    }
-}
-
-impl From<u64> for JsonNumber {
-    fn from(value: u64) -> Self {
-        Self::U64(value)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum JsonValue {
+    #[default]
     Null,
     Bool(bool),
     Number(JsonNumber),
@@ -134,309 +15,10 @@ pub enum JsonValue {
     Object(Map),
 }
 
-impl Default for JsonValue {
-    fn default() -> Self {
-        Self::Null
-    }
-}
-
-impl<'a> Default for &'a JsonValue {
-    fn default() -> Self {
-        &JSON_NULL
-    }
-}
-
-impl Eq for JsonValue {}
-
 pub type Value = JsonValue;
 pub type Number = JsonNumber;
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[cfg(feature = "serde")]
-pub type Error = crate::serde_error::Error;
-
-#[cfg(not(feature = "serde"))]
-pub type Error = JsonError;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Map<K = String, V = JsonValue>(
-    pub Vec<(String, JsonValue)>,
-    pub std::marker::PhantomData<(K, V)>,
-);
-
-impl Map {
-    pub fn new() -> Self {
-        Self(Vec::new(), std::marker::PhantomData)
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(Vec::with_capacity(capacity), std::marker::PhantomData)
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn clear(&mut self) {
-        self.0.clear();
-    }
-
-    pub fn keys(&self) -> crate::Keys<'_> {
-        crate::Keys(self.0.iter())
-    }
-
-    pub fn values(&self) -> crate::Values<'_> {
-        crate::Values(self.0.iter())
-    }
-
-    pub fn values_mut(&mut self) -> crate::ValuesMut<'_> {
-        crate::ValuesMut(self.0.iter_mut())
-    }
-
-    pub fn iter(&self) -> crate::Iter<'_> {
-        crate::Iter(self.0.iter())
-    }
-
-    pub fn iter_mut(&mut self) -> crate::IterMut<'_> {
-        crate::IterMut(self.0.iter_mut())
-    }
-
-    pub fn get<Q>(&self, key: &Q) -> Option<&JsonValue>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter()
-            .find(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|(_, value)| value)
-    }
-
-    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut JsonValue>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter_mut()
-            .find(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|(_, value)| value)
-    }
-
-    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&String, &JsonValue)>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter()
-            .find(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|(k, v)| (k, v))
-    }
-
-    pub fn contains_key<Q>(&self, key: &Q) -> bool
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.get(key).is_some()
-    }
-
-    pub fn insert(&mut self, key: String, value: JsonValue) -> Option<JsonValue> {
-        if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
-            return Some(std::mem::replace(existing, value));
-        }
-        self.0.push((key, value));
-        None
-    }
-
-    pub fn entry<S>(&mut self, key: S) -> crate::MapEntry<'_>
-    where
-        S: Into<String>,
-    {
-        let key = key.into();
-        if let Some(index) = self.0.iter().position(|(candidate, _)| candidate == &key) {
-            crate::MapEntry::Occupied(crate::OccupiedEntry { map: self, index })
-        } else {
-            crate::MapEntry::Vacant(crate::VacantEntry { map: self, key })
-        }
-    }
-
-    pub fn remove<Q>(&mut self, key: &Q) -> Option<JsonValue>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter()
-            .position(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|index| self.0.remove(index).1)
-    }
-
-    pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(String, JsonValue)>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter()
-            .position(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|index| self.0.remove(index))
-    }
-
-    pub fn shift_insert(
-        &mut self,
-        index: usize,
-        key: String,
-        value: JsonValue,
-    ) -> Option<JsonValue> {
-        if let Some(existing_index) = self.0.iter().position(|(candidate, _)| candidate == &key) {
-            let (_, old_value) = self.0.remove(existing_index);
-            let target = if existing_index < index {
-                index.saturating_sub(1)
-            } else {
-                index
-            };
-            let insert_at = target.min(self.0.len());
-            self.0.insert(insert_at, (key, value));
-            return Some(old_value);
-        }
-        let insert_at = index.min(self.0.len());
-        self.0.insert(insert_at, (key, value));
-        None
-    }
-
-    pub fn shift_remove<Q>(&mut self, key: &Q) -> Option<JsonValue>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.remove(key)
-    }
-
-    pub fn shift_remove_entry<Q>(&mut self, key: &Q) -> Option<(String, JsonValue)>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.remove_entry(key)
-    }
-
-    pub fn swap_remove<Q>(&mut self, key: &Q) -> Option<JsonValue>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter()
-            .position(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|index| self.0.swap_remove(index).1)
-    }
-
-    pub fn swap_remove_entry<Q>(&mut self, key: &Q) -> Option<(String, JsonValue)>
-    where
-        String: std::borrow::Borrow<Q>,
-        Q: ?Sized + Ord + Eq + Hash,
-    {
-        self.0
-            .iter()
-            .position(|(candidate, _)| <String as std::borrow::Borrow<Q>>::borrow(candidate) == key)
-            .map(|index| self.0.swap_remove(index))
-    }
-
-    pub fn sort_keys(&mut self) {
-        self.0.sort_by(|a, b| a.0.cmp(&b.0));
-    }
-
-    pub fn append(&mut self, other: &mut Self) {
-        self.0.append(&mut other.0);
-    }
-
-    pub fn into_values(self) -> crate::IntoValues {
-        crate::IntoValues(self.0.into_iter())
-    }
-
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&String, &mut JsonValue) -> bool,
-    {
-        let mut i = 0;
-        while i < self.0.len() {
-            let keep = {
-                let (key, value) = &mut self.0[i];
-                f(key, value)
-            };
-            if keep {
-                i += 1;
-            } else {
-                self.0.remove(i);
-            }
-        }
-    }
-}
-
-impl Default for Map {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<Vec<(String, JsonValue)>> for Map {
-    fn from(value: Vec<(String, JsonValue)>) -> Self {
-        Self(value, std::marker::PhantomData)
-    }
-}
-
-impl std::iter::FromIterator<(String, JsonValue)> for Map {
-    fn from_iter<T: IntoIterator<Item = (String, JsonValue)>>(iter: T) -> Self {
-        Self(iter.into_iter().collect(), std::marker::PhantomData)
-    }
-}
-
-impl Deref for Map {
-    type Target = Vec<(String, JsonValue)>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Map {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl IntoIterator for Map {
-    type Item = (String, JsonValue);
-    type IntoIter = crate::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        crate::IntoIter(self.0.into_iter())
-    }
-}
-
-impl<'a> IntoIterator for &'a Map {
-    type Item = (&'a String, &'a JsonValue);
-    type IntoIter = crate::Iter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a mut Map {
-    type Item = (&'a String, &'a mut JsonValue);
-    type IntoIter = crate::IterMut<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter_mut()
-    }
-}
+impl Eq for JsonValue {}
 
 impl JsonValue {
     pub fn object(entries: Vec<(impl Into<String>, JsonValue)>) -> Self {
@@ -453,9 +35,9 @@ impl JsonValue {
         Self::Array(values)
     }
 
-    pub fn to_json_string(&self) -> Result<String, JsonError> {
-        let mut out = Vec::with_capacity(crate::util::initial_json_capacity(self));
-        crate::util::write_json_value(&mut out, self)?;
+    pub fn to_json_string(&self) -> Result<String, crate::error::JsonError> {
+        let mut out = Vec::with_capacity(util::initial_json_capacity(self));
+        util::write_json_value(&mut out, self)?;
         Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
@@ -576,14 +158,14 @@ impl JsonValue {
 
     pub fn get<I>(&self, index: I) -> Option<&JsonValue>
     where
-        I: crate::ValueIndex,
+        I: ValueIndex,
     {
         index.index_into(self)
     }
 
     pub fn get_mut<I>(&mut self, index: I) -> Option<&mut JsonValue>
     where
-        I: crate::ValueIndex,
+        I: ValueIndex,
     {
         index.index_into_mut(self)
     }
@@ -692,7 +274,7 @@ impl JsonValue {
     }
 }
 
-impl Display for JsonValue {
+impl fmt::Display for JsonValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.to_json_string() {
             Ok(json) => f.write_str(&json),
@@ -701,8 +283,153 @@ impl Display for JsonValue {
     }
 }
 
-static JSON_NULL: JsonValue = JsonValue::Null;
+impl From<bool> for JsonValue {
+    fn from(value: bool) -> Self {
+        Self::Bool(value)
+    }
+}
 
-pub type MapEntry<'a> = crate::map::MapEntry<'a>;
-pub type OccupiedEntry<'a> = crate::map::OccupiedEntry<'a>;
-pub type VacantEntry<'a> = crate::map::VacantEntry<'a>;
+impl From<String> for JsonValue {
+    fn from(value: String) -> Self {
+        Self::String(value)
+    }
+}
+
+impl From<&str> for JsonValue {
+    fn from(value: &str) -> Self {
+        Self::String(value.to_owned())
+    }
+}
+
+impl From<i8> for JsonValue {
+    fn from(value: i8) -> Self {
+        Self::Number(JsonNumber::from(value as i64))
+    }
+}
+
+impl From<i16> for JsonValue {
+    fn from(value: i16) -> Self {
+        Self::Number(JsonNumber::from(value as i64))
+    }
+}
+
+impl From<i32> for JsonValue {
+    fn from(value: i32) -> Self {
+        Self::Number(JsonNumber::from(value as i64))
+    }
+}
+
+impl From<i64> for JsonValue {
+    fn from(value: i64) -> Self {
+        Self::Number(JsonNumber::from(value))
+    }
+}
+
+impl From<isize> for JsonValue {
+    fn from(value: isize) -> Self {
+        Self::Number(JsonNumber::from(value as i64))
+    }
+}
+
+impl From<u8> for JsonValue {
+    fn from(value: u8) -> Self {
+        Self::Number(JsonNumber::U64(value as u64))
+    }
+}
+
+impl From<u16> for JsonValue {
+    fn from(value: u16) -> Self {
+        Self::Number(JsonNumber::U64(value as u64))
+    }
+}
+
+impl From<u32> for JsonValue {
+    fn from(value: u32) -> Self {
+        Self::Number(JsonNumber::U64(value as u64))
+    }
+}
+
+impl From<u64> for JsonValue {
+    fn from(value: u64) -> Self {
+        Self::Number(JsonNumber::U64(value))
+    }
+}
+
+impl From<usize> for JsonValue {
+    fn from(value: usize) -> Self {
+        Self::Number(JsonNumber::U64(value as u64))
+    }
+}
+
+impl From<f32> for JsonValue {
+    fn from(value: f32) -> Self {
+        Self::Number(JsonNumber::F64(value as f64))
+    }
+}
+
+impl From<f64> for JsonValue {
+    fn from(value: f64) -> Self {
+        Self::Number(JsonNumber::F64(value))
+    }
+}
+
+impl From<i128> for JsonValue {
+    fn from(value: i128) -> Self {
+        JsonNumber::from_i128(value)
+            .map(Self::Number)
+            .unwrap_or_else(|| Self::String(value.to_string()))
+    }
+}
+
+impl From<u128> for JsonValue {
+    fn from(value: u128) -> Self {
+        JsonNumber::from_u128(value)
+            .map(Self::Number)
+            .unwrap_or_else(|| Self::String(value.to_string()))
+    }
+}
+
+impl<T> From<Option<T>> for JsonValue
+where
+    T: Into<JsonValue>,
+{
+    fn from(value: Option<T>) -> Self {
+        match value {
+            Some(value) => value.into(),
+            None => Self::Null,
+        }
+    }
+}
+
+impl<T> From<Vec<T>> for JsonValue
+where
+    T: Into<JsonValue>,
+{
+    fn from(values: Vec<T>) -> Self {
+        Self::Array(values.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<K, V> std::iter::FromIterator<(K, V)> for JsonValue
+where
+    K: Into<String>,
+    V: Into<JsonValue>,
+{
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
+        Self::Object(
+            iter.into_iter()
+                .map(|(key, value)| (key.into(), value.into()))
+                .collect::<Vec<_>>()
+                .into(),
+        )
+    }
+}
+
+impl<T> std::iter::FromIterator<T> for JsonValue
+where
+    T: Into<JsonValue>,
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::Array(iter.into_iter().map(Into::into).collect())
+    }
+}

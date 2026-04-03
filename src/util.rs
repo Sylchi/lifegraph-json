@@ -1,27 +1,19 @@
-use crate::error::JsonError;
-use crate::value::{JsonNumber, JsonValue};
-use std::io::Write;
+use crate::{JsonError, JsonNumber, JsonValue};
 
 pub fn write_json_value(out: &mut Vec<u8>, value: &JsonValue) -> Result<(), JsonError> {
     match value {
         JsonValue::Null => out.extend_from_slice(b"null"),
-        JsonValue::Bool(value) => {
-            if *value {
+        JsonValue::Bool(v) => {
+            if *v {
                 out.extend_from_slice(b"true");
             } else {
                 out.extend_from_slice(b"false");
             }
         }
-        JsonValue::Number(number) => write_json_number(out, number)?,
-        JsonValue::String(value) => {
-            write_escaped_json_string(out, value);
-        }
-        JsonValue::Array(values) => {
-            write_json_array(out, values)?;
-        }
-        JsonValue::Object(entries) => {
-            write_json_object(out, entries)?;
-        }
+        JsonValue::Number(n) => write_json_number(out, n)?,
+        JsonValue::String(s) => write_escaped_json_string(out, s),
+        JsonValue::Array(v) => write_json_array(out, v)?,
+        JsonValue::Object(e) => write_json_object(out, e)?,
     }
     Ok(())
 }
@@ -39,12 +31,12 @@ pub fn write_json_value_pretty(
             out.push(b'[');
             if !values.is_empty() {
                 out.push(b'\n');
-                for (index, value) in values.iter().enumerate() {
-                    if index > 0 {
+                for (i, v) in values.iter().enumerate() {
+                    if i > 0 {
                         out.extend_from_slice(b",\n");
                     }
                     write_indent(out, depth + 1);
-                    write_json_value_pretty(out, value, depth + 1)?;
+                    write_json_value_pretty(out, v, depth + 1)?;
                 }
                 out.push(b'\n');
                 write_indent(out, depth);
@@ -56,8 +48,8 @@ pub fn write_json_value_pretty(
             out.push(b'{');
             if !entries.is_empty() {
                 out.push(b'\n');
-                for (index, (key, value)) in entries.iter().enumerate() {
-                    if index > 0 {
+                for (i, (key, value)) in entries.iter().enumerate() {
+                    if i > 0 {
                         out.extend_from_slice(b",\n");
                     }
                     write_indent(out, depth + 1);
@@ -82,27 +74,27 @@ fn write_indent(out: &mut Vec<u8>, depth: usize) {
 
 pub fn write_json_number(out: &mut Vec<u8>, value: &JsonNumber) -> Result<(), JsonError> {
     match value {
-        JsonNumber::I64(value) => {
-            append_i64(out, *value);
+        JsonNumber::I64(v) => {
+            append_i64(out, *v);
             Ok(())
         }
-        JsonNumber::U64(value) => {
-            append_u64(out, *value);
+        JsonNumber::U64(v) => {
+            append_u64(out, *v);
             Ok(())
         }
-        JsonNumber::F64(value) => {
-            if !value.is_finite() {
+        JsonNumber::F64(v) => {
+            if !v.is_finite() {
                 return Err(JsonError::NonFiniteNumber);
             }
             use core::fmt::Write;
             struct FmtWriter<'a>(&'a mut Vec<u8>);
-            impl<'a> Write for FmtWriter<'a> {
+            impl Write for FmtWriter<'_> {
                 fn write_str(&mut self, s: &str) -> core::fmt::Result {
                     self.0.extend_from_slice(s.as_bytes());
                     Ok(())
                 }
             }
-            let _ = write!(FmtWriter(out), "{value}");
+            let _ = write!(FmtWriter(out), "{v}");
             Ok(())
         }
     }
@@ -111,9 +103,23 @@ pub fn write_json_number(out: &mut Vec<u8>, value: &JsonNumber) -> Result<(), Js
 pub fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
     out.push(b'"');
     let bytes = input.as_bytes();
-    let mut chunk_start = 0usize;
-
-    for (index, byte) in bytes.iter().copied().enumerate() {
+    let mut fast_index = 0usize;
+    while fast_index < bytes.len() {
+        if needs_escape(bytes[fast_index]) {
+            break;
+        }
+        fast_index += 1;
+    }
+    if fast_index == bytes.len() {
+        out.extend_from_slice(bytes);
+        out.push(b'"');
+        return;
+    }
+    if fast_index > 0 {
+        out.extend_from_slice(&bytes[..fast_index]);
+    }
+    let mut chunk_start = fast_index;
+    for (index, byte) in bytes.iter().copied().enumerate().skip(fast_index) {
         let escape = match byte {
             b'"' => Some(br#"\""#.as_slice()),
             b'\\' => Some(br#"\\"#.as_slice()),
@@ -122,29 +128,27 @@ pub fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
             b'\n' => Some(br#"\n"#.as_slice()),
             b'\r' => Some(br#"\r"#.as_slice()),
             b'\t' => Some(br#"\t"#.as_slice()),
-            _ if byte <= 0x1f => {
-                if chunk_start < index {
-                    out.extend_from_slice(&bytes[chunk_start..index]);
-                }
-                out.extend_from_slice(br#"\u00"#);
-                out.push(hex_digit((byte >> 4) & 0x0f));
-                out.push(hex_digit(byte & 0x0f));
-                chunk_start = index + 1;
-                continue;
-            }
             _ => None,
         };
-
         if let Some(escape) = escape {
             if chunk_start < index {
                 out.extend_from_slice(&bytes[chunk_start..index]);
             }
             out.extend_from_slice(escape);
             chunk_start = index + 1;
+            continue;
+        }
+        if byte <= 0x1f {
+            if chunk_start < index {
+                out.extend_from_slice(&bytes[chunk_start..index]);
+            }
+            out.extend_from_slice(br#"\u00"#);
+            out.push(hex_digit((byte >> 4) & 0x0f));
+            out.push(hex_digit(byte & 0x0f));
+            chunk_start = index + 1;
         }
     }
-
-    if chunk_start < bytes.len() {
+    if chunk_start < input.len() {
         out.extend_from_slice(&bytes[chunk_start..]);
     }
     out.push(b'"');
@@ -158,9 +162,7 @@ pub fn write_json_array(out: &mut Vec<u8>, values: &[JsonValue]) -> Result<(), J
     out.push(b'[');
     match values {
         [] => {}
-        [one] => {
-            write_json_value(out, one)?;
-        }
+        [one] => write_json_value(out, one)?,
         [a, b] => {
             write_json_value(out, a)?;
             out.push(b',');
@@ -177,9 +179,9 @@ pub fn write_json_array(out: &mut Vec<u8>, values: &[JsonValue]) -> Result<(), J
             let mut iter = values.iter();
             if let Some(first) = iter.next() {
                 write_json_value(out, first)?;
-                for value in iter {
+                for v in iter {
                     out.push(b',');
-                    write_json_value(out, value)?;
+                    write_json_value(out, v)?;
                 }
             }
         }
@@ -188,7 +190,10 @@ pub fn write_json_array(out: &mut Vec<u8>, values: &[JsonValue]) -> Result<(), J
     Ok(())
 }
 
-pub fn write_json_object(out: &mut Vec<u8>, entries: &[(String, JsonValue)]) -> Result<(), JsonError> {
+pub fn write_json_object(
+    out: &mut Vec<u8>,
+    entries: &[(String, JsonValue)],
+) -> Result<(), JsonError> {
     out.push(b'{');
     match entries {
         [] => {}
@@ -243,12 +248,7 @@ pub fn write_json_key(out: &mut Vec<u8>, key: &str) {
 }
 
 fn is_plain_json_string(bytes: &[u8]) -> bool {
-    for &byte in bytes {
-        if needs_escape(byte) {
-            return false;
-        }
-    }
-    true
+    bytes.iter().all(|&b| !needs_escape(b))
 }
 
 pub fn initial_json_capacity(value: &JsonValue) -> usize {
@@ -256,33 +256,16 @@ pub fn initial_json_capacity(value: &JsonValue) -> usize {
         JsonValue::Null => 4,
         JsonValue::Bool(true) => 4,
         JsonValue::Bool(false) => 5,
-        JsonValue::Number(JsonNumber::I64(value)) => estimate_i64_len(*value),
-        JsonValue::Number(JsonNumber::U64(value)) => estimate_u64_len(*value),
+        JsonValue::Number(JsonNumber::I64(v)) => estimate_i64_len(*v),
+        JsonValue::Number(JsonNumber::U64(v)) => estimate_u64_len(*v),
         JsonValue::Number(JsonNumber::F64(_)) => 24,
-        JsonValue::String(value) => estimate_escaped_string_len(value),
-        JsonValue::Array(values) => {
-            if values.is_empty() {
-                2
-            } else {
-                2 + values.len().saturating_sub(1)
-                    + values
-                        .iter()
-                        .map(|v| initial_json_capacity(v))
-                        .sum::<usize>()
-            }
-        }
-        JsonValue::Object(entries) => {
-            if entries.is_empty() {
-                2
-            } else {
-                2 + entries.len()
-                    + entries
-                        .iter()
-                        .map(|(key, value)| {
-                            estimate_escaped_string_len(key) + 1 + initial_json_capacity(value)
-                        })
-                        .sum::<usize>()
-            }
+        JsonValue::String(v) => estimate_escaped_string_len(v),
+        JsonValue::Array(v) => 2 + v.len().saturating_mul(16),
+        JsonValue::Object(e) => {
+            2 + e
+                .iter()
+                .map(|(k, _)| estimate_escaped_string_len(k) + 8)
+                .sum::<usize>()
         }
     }
 }
@@ -326,23 +309,6 @@ fn append_i64(out: &mut Vec<u8>, value: i64) {
 }
 
 fn append_u64(out: &mut Vec<u8>, mut value: u64) {
-    if value < 10 {
-        out.push(b'0' + value as u8);
-        return;
-    }
-    if value < 100 {
-        out.extend_from_slice(&[b'0' + (value / 10) as u8, b'0' + (value % 10) as u8]);
-        return;
-    }
-    if value < 1000 {
-        out.extend_from_slice(&[
-            b'0' + (value / 100) as u8,
-            b'0' + ((value / 10) % 10) as u8,
-            b'0' + (value % 10) as u8,
-        ]);
-        return;
-    }
-
     let mut buf = [0u8; 20];
     let mut index = buf.len();
     loop {

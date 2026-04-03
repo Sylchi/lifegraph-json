@@ -1,4 +1,4 @@
-use core::fmt;
+use std::fmt;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonError {
@@ -11,16 +11,37 @@ pub enum JsonParseError {
     InvalidUtf8,
     UnexpectedEnd,
     UnexpectedTrailingCharacters(usize),
-    UnexpectedCharacter { index: usize, found: char },
-    InvalidLiteral { index: usize },
-    InvalidNumber { index: usize },
-    InvalidEscape { index: usize },
-    InvalidUnicodeEscape { index: usize },
-    InvalidUnicodeScalar { index: usize },
-    ExpectedColon { index: usize },
-    ExpectedCommaOrEnd { index: usize, context: &'static str },
-    /// JSON nesting depth exceeds the maximum allowed (10000)
-    NestingTooDeep { depth: usize, max: usize },
+    UnexpectedCharacter {
+        index: usize,
+        found: char,
+    },
+    InvalidLiteral {
+        index: usize,
+    },
+    InvalidNumber {
+        index: usize,
+    },
+    InvalidEscape {
+        index: usize,
+    },
+    InvalidUnicodeEscape {
+        index: usize,
+    },
+    InvalidUnicodeScalar {
+        index: usize,
+    },
+    ExpectedColon {
+        index: usize,
+    },
+    ExpectedCommaOrEnd {
+        index: usize,
+        context: &'static str,
+    },
+    /// JSON nesting depth exceeds the maximum allowed (128)
+    NestingTooDeep {
+        depth: usize,
+        max: usize,
+    },
 }
 
 impl fmt::Display for JsonError {
@@ -67,9 +88,3 @@ impl fmt::Display for JsonParseError {
 
 impl std::error::Error for JsonError {}
 impl std::error::Error for JsonParseError {}
-
-impl JsonError {
-    pub fn io(_error: std::io::Error) -> Self {
-        Self::Io
-    }
-}
