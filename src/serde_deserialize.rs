@@ -1,7 +1,8 @@
 use crate::map::Map;
+use crate::number::JsonNumber;
 use crate::parse::Parser;
 use crate::serde_error::json_parse_error_to_serde;
-use crate::{JsonNumber, JsonValue};
+use crate::JsonValue;
 use serde_crate::de::{
     value::StringDeserializer, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, VariantAccess,
     Visitor,
@@ -10,6 +11,9 @@ use serde_crate::Deserializer as SerdeDeserializer;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
+/// Single-pass JSON deserializer.
+///
+/// Drives the parser and serde visitor together — no intermediate `JsonValue` tree.
 pub struct Deserializer<'de> {
     input: Cow<'de, str>,
     offset: usize,
@@ -66,14 +70,21 @@ impl<'de> Deserializer<'de> {
     }
 
     pub fn end(&mut self) -> Result<(), crate::serde_error::Error> {
-        let mut parser = Parser::new(self.remaining_input());
-        parser.skip_whitespace();
-        if parser.is_eof() {
+        if self.failed {
+            return Err(self.error.clone().unwrap_or_else(|| {
+                crate::serde_error::Error::custom("deserializer is in a failed state")
+            }));
+        }
+        let remaining = self.remaining_input();
+        let mut p = Parser::new(remaining);
+        p.skip_whitespace();
+        if p.is_eof() {
+            self.offset = self.input.len();
             Ok(())
         } else {
             Err(json_parse_error_to_serde(
-                self.remaining_input(),
-                crate::JsonParseError::UnexpectedTrailingCharacters(parser.index()),
+                remaining,
+                crate::JsonParseError::UnexpectedTrailingCharacters(p.index()),
             ))
         }
     }
@@ -82,21 +93,120 @@ impl<'de> Deserializer<'de> {
         &self.input[self.offset..]
     }
 
-    fn parse_next_value(&mut self) -> Result<JsonValue, crate::serde_error::Error> {
+    fn skip_whitespace(&mut self) {
+        let remaining = self.remaining_input();
+        let mut i = 0;
+        for byte in remaining.bytes() {
+            match byte {
+                b' ' | b'\n' | b'\r' | b'\t' => i += 1,
+                _ => break,
+            }
+        }
+        self.offset += i;
+    }
+
+    fn peek_byte(&mut self) -> Option<u8> {
+        self.skip_whitespace();
+        self.remaining_input().as_bytes().first().copied()
+    }
+
+    fn error_literal(index: usize) -> crate::JsonParseError {
+        crate::JsonParseError::InvalidLiteral { index }
+    }
+
+    fn error_unexpected(index: usize, found: char) -> crate::JsonParseError {
+        crate::JsonParseError::UnexpectedCharacter { index, found }
+    }
+
+    /// Deserialize the next JSON value directly into the visitor's output type.
+    fn deserialize_direct<V>(&mut self, visitor: V) -> Result<V::Value, crate::serde_error::Error>
+    where
+        V: Visitor<'de>,
+    {
         if self.failed {
             return Err(self.error.clone().unwrap_or_else(|| {
                 crate::serde_error::Error::custom("deserializer is in a failed state")
             }));
         }
+        match self.peek_byte() {
+            Some(b'n') => self.consume_literal(b"null", visitor.visit_unit()),
+            Some(b't') => self.consume_literal(b"true", visitor.visit_bool(true)),
+            Some(b'f') => self.consume_literal(b"false", visitor.visit_bool(false)),
+            Some(b'"') => self.consume_string(visitor),
+            Some(b'[') => self.consume_array(visitor),
+            Some(b'{') => self.consume_object(visitor),
+            Some(b'-' | b'0'..=b'9') => self.consume_number(visitor),
+            Some(found) => {
+                let err = Self::error_unexpected(self.offset, found as char);
+                Err(json_parse_error_to_serde(self.remaining_input(), err))
+            }
+            None => {
+                let err = crate::JsonParseError::UnexpectedEnd;
+                Err(json_parse_error_to_serde("", err))
+            }
+        }
+    }
 
+    fn consume_literal<T>(
+        &mut self,
+        expected: &[u8],
+        result: Result<T, crate::serde_error::Error>,
+    ) -> Result<T, crate::serde_error::Error> {
+        if self.remaining_input().as_bytes().starts_with(expected) {
+            self.offset += expected.len();
+            result
+        } else {
+            let err = Self::error_literal(self.offset);
+            Err(json_parse_error_to_serde(self.remaining_input(), err))
+        }
+    }
+
+    fn consume_number<V>(&mut self, visitor: V) -> Result<V::Value, crate::serde_error::Error>
+    where
+        V: Visitor<'de>,
+    {
         let remaining = self.remaining_input();
-        let mut parser = Parser::new(remaining);
-        let value = parser
-            .parse_value()
-            .map_err(|error| json_parse_error_to_serde(remaining, error))?;
-        parser.skip_whitespace();
-        self.offset += parser.index();
-        Ok(value)
+        let mut p = Parser::new(remaining);
+        let num = p
+            .parse_number()
+            .map_err(|e| json_parse_error_to_serde(remaining, e))?;
+        self.offset += p.index();
+        match num {
+            JsonNumber::I64(v) => visitor.visit_i64(v),
+            JsonNumber::U64(v) => visitor.visit_u64(v),
+            JsonNumber::F64(v) => visitor.visit_f64(v),
+        }
+    }
+
+    fn consume_string<V>(&mut self, visitor: V) -> Result<V::Value, crate::serde_error::Error>
+    where
+        V: Visitor<'de>,
+    {
+        let remaining = self.remaining_input();
+        let mut p = Parser::new(remaining);
+        let s = p
+            .parse_string()
+            .map_err(|e| json_parse_error_to_serde(remaining, e))?;
+        self.offset += p.index();
+        visitor.visit_string(s)
+    }
+
+    fn consume_array<V>(&mut self, visitor: V) -> Result<V::Value, crate::serde_error::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.offset += 1; // consume '['
+        let mut seq = DirectSeqAccess { de: self };
+        visitor.visit_seq(&mut seq)
+    }
+
+    fn consume_object<V>(&mut self, visitor: V) -> Result<V::Value, crate::serde_error::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.offset += 1; // consume '{'
+        let mut map = DirectMapAccess { de: self };
+        visitor.visit_map(&mut map)
     }
 }
 
@@ -107,29 +217,56 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        let value = self.parse_next_value()?;
-        JsonValueDeserializer::new(value).deserialize_any(visitor)
+        self.deserialize_direct(visitor)
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        let value = self.parse_next_value()?;
-        JsonValueDeserializer::new(value).deserialize_option(visitor)
+        if self.peek_byte() == Some(b'n') {
+            self.consume_literal(b"null", visitor.visit_none())
+        } else {
+            visitor.visit_some(self)
+        }
     }
 
     fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
+        _name: &'static str,
+        _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        let value = self.parse_next_value()?;
-        JsonValueDeserializer::new(value).deserialize_enum(name, variants, visitor)
+        match self.peek_byte() {
+            Some(b'{') => {
+                self.offset += 1; // consume '{'
+                self.skip_whitespace();
+                if self.peek_byte() != Some(b'"') {
+                    let err = crate::JsonParseError::UnexpectedEnd;
+                    return Err(json_parse_error_to_serde(self.remaining_input(), err));
+                }
+                let variant_name = self.read_string()?;
+                self.skip_whitespace();
+                if self.remaining_input().as_bytes().starts_with(b":") {
+                    self.offset += 1;
+                }
+                visitor.visit_enum(DirectEnumAccess {
+                    variant: variant_name,
+                    de: self,
+                })
+            }
+            Some(b'"') => {
+                let variant = self.read_string()?;
+                visitor.visit_enum(UnitEnumAccess { variant })
+            }
+            _ => {
+                let err = crate::JsonParseError::UnexpectedEnd;
+                Err(json_parse_error_to_serde(self.remaining_input(), err))
+            }
+        }
     }
 
     fn deserialize_newtype_struct<V>(
@@ -142,27 +279,30 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
     {
         #[cfg(feature = "raw_value")]
         if name == crate::raw::RAW_VALUE_TOKEN {
-            let raw = self.parse_next_value()?;
-            let raw_str = raw
-                .to_json_string()
-                .map_err(crate::serde_error::json_error_to_serde)?;
-            return visitor.visit_map(crate::raw::OwnedRawDeserializer::new(raw_str));
+            self.skip_whitespace();
+            let start = self.offset;
+            let remaining = self.remaining_input();
+            let mut p = Parser::new(remaining);
+            p.parse_value()
+                .map_err(|e| json_parse_error_to_serde(remaining, e))?;
+            let end = start + p.index();
+            let raw_json = &self.input[start..end];
+            self.offset = end;
+            return visitor.visit_map(crate::raw::OwnedRawDeserializer::new(raw_json.to_owned()));
         }
-        let value = self.parse_next_value()?;
-        JsonValueDeserializer::new(value).deserialize_newtype_struct(name, visitor)
+        visitor.visit_newtype_struct(self)
     }
 
     fn deserialize_struct<V>(
         self,
-        name: &'static str,
-        fields: &'static [&'static str],
+        _name: &'static str,
+        _fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        let value = self.parse_next_value()?;
-        JsonValueDeserializer::new(value).deserialize_struct(name, fields, visitor)
+        self.consume_object(visitor)
     }
 
     serde_crate::forward_to_deserialize_any! {
@@ -170,6 +310,224 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
         bytes byte_buf unit unit_struct seq tuple tuple_struct map identifier ignored_any
     }
 }
+
+impl<'de> Deserializer<'de> {
+    /// Parse a JSON string and advance offset. Used by enum variant parsing.
+    fn read_string(&mut self) -> Result<String, crate::serde_error::Error> {
+        let remaining = self.remaining_input();
+        let mut p = Parser::new(remaining);
+        let s = p
+            .parse_string()
+            .map_err(|e| json_parse_error_to_serde(remaining, e))?;
+        self.offset += p.index();
+        Ok(s)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DirectSeqAccess — single-pass array deserialization
+// ---------------------------------------------------------------------------
+
+struct DirectSeqAccess<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
+}
+
+impl<'de> SeqAccess<'de> for DirectSeqAccess<'_, 'de> {
+    type Error = crate::serde_error::Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        match self.de.peek_byte() {
+            Some(b']') => {
+                self.de.offset += 1;
+                Ok(None)
+            }
+            Some(b',') => {
+                self.de.offset += 1;
+                Some(seed.deserialize(&mut *self.de)).transpose()
+            }
+            Some(_) => Some(seed.deserialize(&mut *self.de)).transpose(),
+            None => {
+                let err = crate::JsonParseError::UnexpectedEnd;
+                Err(json_parse_error_to_serde(self.de.remaining_input(), err))
+            }
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DirectMapAccess — single-pass object deserialization
+// ---------------------------------------------------------------------------
+
+struct DirectMapAccess<'a, 'de: 'a> {
+    de: &'a mut Deserializer<'de>,
+}
+
+impl<'de> MapAccess<'de> for DirectMapAccess<'_, 'de> {
+    type Error = crate::serde_error::Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: DeserializeSeed<'de>,
+    {
+        match self.de.peek_byte() {
+            Some(b'}') => {
+                self.de.offset += 1;
+                Ok(None)
+            }
+            Some(b',') => {
+                self.de.offset += 1;
+                self.de.skip_whitespace();
+                let key = self.de.read_string()?;
+                self.de.skip_whitespace();
+                if self.de.remaining_input().as_bytes().starts_with(b":") {
+                    self.de.offset += 1;
+                }
+                seed.deserialize(StringDeserializer::new(key)).map(Some)
+            }
+            Some(_) => {
+                let key = self.de.read_string()?;
+                self.de.skip_whitespace();
+                if self.de.remaining_input().as_bytes().starts_with(b":") {
+                    self.de.offset += 1;
+                }
+                seed.deserialize(StringDeserializer::new(key)).map(Some)
+            }
+            None => {
+                let err = crate::JsonParseError::UnexpectedEnd;
+                Err(json_parse_error_to_serde(self.de.remaining_input(), err))
+            }
+        }
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        seed.deserialize(&mut *self.de)
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Enum access helpers
+// ---------------------------------------------------------------------------
+
+struct DirectEnumAccess<'a, 'de: 'a> {
+    variant: String,
+    de: &'a mut Deserializer<'de>,
+}
+
+impl<'a, 'de: 'a> EnumAccess<'de> for DirectEnumAccess<'a, 'de> {
+    type Error = crate::serde_error::Error;
+    type Variant = &'a mut Deserializer<'de>;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let variant = seed.deserialize(StringDeserializer::<Self::Error>::new(self.variant))?;
+        Ok((variant, self.de))
+    }
+}
+
+impl<'a, 'de: 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
+    type Error = crate::serde_error::Error;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self)
+    }
+
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_array(visitor)
+    }
+
+    fn struct_variant<V>(
+        self,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.consume_object(visitor)
+    }
+}
+
+struct UnitEnumAccess {
+    variant: String,
+}
+
+impl<'de> EnumAccess<'de> for UnitEnumAccess {
+    type Error = crate::serde_error::Error;
+    type Variant = Impossible<(), crate::serde_error::Error>;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let variant = seed.deserialize(StringDeserializer::<Self::Error>::new(self.variant))?;
+        Ok((variant, Impossible(PhantomData, PhantomData)))
+    }
+}
+
+struct Impossible<T, E>(PhantomData<fn() -> T>, PhantomData<E>);
+
+impl<'de, T, E: serde_crate::de::Error> VariantAccess<'de> for Impossible<T, E> {
+    type Error = E;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn newtype_variant_seed<U>(self, _: U) -> Result<U::Value, Self::Error>
+    where
+        U: DeserializeSeed<'de>,
+    {
+        unreachable!()
+    }
+
+    fn tuple_variant<V>(self, _: usize, _: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unreachable!()
+    }
+
+    fn struct_variant<V>(
+        self,
+        _fields: &'static [&'static str],
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        unreachable!()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JsonValueDeserializer — for from_value (deserializes from existing JsonValue)
+// ---------------------------------------------------------------------------
 
 pub struct JsonValueDeserializer {
     value: JsonValue,
@@ -227,15 +585,15 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
                 visitor.visit_seq(&mut seq)
             }
             JsonValue::Object(obj) => {
-                let map: Map = obj;
-                let len = map.len();
-                let seq: Vec<(String, JsonValue)> = map.into_vec().into_iter().collect();
-                let mut map_access = JsonMapAccess {
-                    iter: seq.into_iter(),
+                let len = obj.len();
+                let entries: Vec<(String, JsonValue)> =
+                    obj.0.into_iter().map(|(k, v)| (k, v)).collect();
+                let mut map = JsonMapAccess {
+                    iter: entries.into_iter(),
                     len,
                     pending_value: None,
                 };
-                visitor.visit_map(&mut map_access)
+                visitor.visit_map(&mut map)
             }
         }
     }
@@ -260,49 +618,7 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         }
     }
 
-    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
-    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
-    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
-    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
-    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
-    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
@@ -316,25 +632,11 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         self.deserialize_any(visitor)
     }
 
-    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_any(visitor)
-    }
-
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
         self.deserialize_any(visitor)
-    }
-
-    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_str(visitor)
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -359,7 +661,6 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         V: Visitor<'de>,
     {
         match self.value {
-            JsonValue::String(s) => visitor.visit_string(s),
             JsonValue::Array(arr) => {
                 let bytes: Vec<u8> = arr
                     .into_iter()
@@ -370,15 +671,9 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
                     .collect();
                 visitor.visit_byte_buf(bytes)
             }
+            JsonValue::String(s) => visitor.visit_string(s),
             other => Err(Self::invalid_type("bytes", &other)),
         }
-    }
-
-    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_bytes(visitor)
     }
 
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -389,28 +684,6 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
             JsonValue::Null => visitor.visit_unit(),
             other => Err(Self::invalid_type("unit", &other)),
         }
-    }
-
-    fn deserialize_unit_struct<V>(
-        self,
-        _name: &'static str,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_unit(visitor)
-    }
-
-    fn deserialize_newtype_struct<V>(
-        self,
-        _name: &'static str,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        visitor.visit_newtype_struct(self)
     }
 
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -430,55 +703,24 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
         }
     }
 
-    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_seq(visitor)
-    }
-
-    fn deserialize_tuple_struct<V>(
-        self,
-        _name: &'static str,
-        _len: usize,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_tuple(_len, visitor)
-    }
-
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
         match self.value {
             JsonValue::Object(obj) => {
-                let map: Map = obj;
-                let len = map.len();
-                let seq: Vec<(String, JsonValue)> = map.into_vec().into_iter().collect();
-                let mut map_access = JsonMapAccess {
-                    iter: seq.into_iter(),
+                let len = obj.len();
+                let entries: Vec<(String, JsonValue)> =
+                    obj.0.into_iter().map(|(k, v)| (k, v)).collect();
+                let mut map = JsonMapAccess {
+                    iter: entries.into_iter(),
                     len,
                     pending_value: None,
                 };
-                visitor.visit_map(&mut map_access)
+                visitor.visit_map(&mut map)
             }
             other => Err(Self::invalid_type("map", &other)),
         }
-    }
-
-    fn deserialize_struct<V>(
-        self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_map(visitor)
     }
 
     fn deserialize_enum<V>(
@@ -492,38 +734,93 @@ impl<'de> SerdeDeserializer<'de> for JsonValueDeserializer {
     {
         match self.value {
             JsonValue::Object(obj) => {
-                let mut iter = obj.iter();
+                let mut iter = obj.0.into_iter();
                 if let Some((key, value)) = iter.next() {
-                    let seed = EnumVariantAccess {
-                        variant: key.clone(),
-                        value: value.clone(),
+                    let seed = EnumVariantAccess2 {
+                        variant: key,
+                        value,
                     };
-                    return visitor.visit_enum(seed);
+                    visitor.visit_enum(seed)
+                } else {
+                    Err(Self::invalid_type("enum", &JsonValue::Null))
                 }
-                Err(Self::invalid_type("enum", &JsonValue::Null))
             }
-            JsonValue::String(variant) => {
-                let seed = UnitVariantAccess { variant };
-                visitor.visit_enum(seed)
-            }
+            JsonValue::String(variant) => visitor.visit_enum(UnitEnumAccess { variant }),
             other => Err(Self::invalid_type("enum", &other)),
         }
     }
 
-    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_newtype_struct<V>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_str(visitor)
+        visitor.visit_newtype_struct(self)
     }
 
-    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    serde_crate::forward_to_deserialize_any! {
+        i8 i16 i32 i128 u8 u16 u32 u128 f32 char
+        byte_buf unit_struct tuple tuple_struct struct identifier ignored_any
+    }
+}
+
+struct EnumVariantAccess2 {
+    variant: String,
+    value: JsonValue,
+}
+
+impl<'de> EnumAccess<'de> for EnumVariantAccess2 {
+    type Error = crate::serde_error::Error;
+    type Variant = JsonValueDeserializer;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        let variant = seed.deserialize(StringDeserializer::<Self::Error>::new(self.variant))?;
+        Ok((variant, JsonValueDeserializer::new(self.value)))
+    }
+}
+
+impl<'de> VariantAccess<'de> for JsonValueDeserializer {
+    type Error = crate::serde_error::Error;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self)
+    }
+
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_any(visitor)
+        self.deserialize_tuple(len, visitor)
+    }
+
+    fn struct_variant<V>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_struct("", fields, visitor)
     }
 }
+
+// ---------------------------------------------------------------------------
+// serde Deserialize impls for JsonValue, JsonNumber, Map
+// ---------------------------------------------------------------------------
 
 impl<'de> serde_crate::Deserialize<'de> for JsonValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -584,7 +881,7 @@ impl<'de> Visitor<'de> for ValueVisitor {
     where
         E: serde_crate::de::Error,
     {
-        Ok(JsonValue::String(value.to_string()))
+        Ok(JsonValue::String(value.to_owned()))
     }
 
     fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
@@ -611,7 +908,7 @@ impl<'de> Visitor<'de> for ValueVisitor {
     {
         let mut obj = Map::new();
         while let Some((key, value)) = map.next_entry()? {
-            obj.push_entry((key, value));
+            obj.insert(key, value);
         }
         Ok(JsonValue::Object(obj))
     }
@@ -660,7 +957,6 @@ impl<'de> Visitor<'de> for NumberVisitor {
     where
         E: serde_crate::de::Error,
     {
-        // Try parsing as f64 first, then i64, then u64
         if let Ok(n) = value.parse::<f64>() {
             if n.is_finite() {
                 return Ok(JsonNumber::F64(n));
@@ -700,11 +996,15 @@ impl<'de> Visitor<'de> for MapVisitor {
     {
         let mut obj = Map::new();
         while let Some((key, value)) = map.next_entry()? {
-            obj.push_entry((key, value));
+            obj.insert(key, value);
         }
         Ok(obj)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Helpers for JsonValueDeserializer (tree-based, for from_value)
+// ---------------------------------------------------------------------------
 
 struct JsonSeqAccess {
     iter: std::vec::IntoIter<JsonValue>,
@@ -747,7 +1047,8 @@ impl<'de> MapAccess<'de> for JsonMapAccess {
         match self.iter.next() {
             Some((key, value)) => {
                 self.pending_value = Some(value);
-                seed.deserialize(StringDeserializer::new(key)).map(Some)
+                seed.deserialize(StringDeserializer::<Self::Error>::new(key))
+                    .map(Some)
             }
             None => Ok(None),
         }
@@ -766,112 +1067,5 @@ impl<'de> MapAccess<'de> for JsonMapAccess {
 
     fn size_hint(&self) -> Option<usize> {
         Some(self.len)
-    }
-}
-
-struct EnumVariantAccess {
-    variant: String,
-    value: JsonValue,
-}
-
-impl<'de> EnumAccess<'de> for EnumVariantAccess {
-    type Error = crate::serde_error::Error;
-    type Variant = JsonValueDeserializer;
-
-    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        let deserializer: StringDeserializer<crate::serde_error::Error> =
-            StringDeserializer::new(self.variant);
-        let variant = seed.deserialize(deserializer)?;
-        Ok((variant, JsonValueDeserializer::new(self.value)))
-    }
-}
-
-impl<'de> VariantAccess<'de> for JsonValueDeserializer {
-    type Error = crate::serde_error::Error;
-
-    fn unit_variant(self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
-    where
-        T: DeserializeSeed<'de>,
-    {
-        seed.deserialize(self)
-    }
-
-    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_tuple(len, visitor)
-    }
-
-    fn struct_variant<V>(
-        self,
-        fields: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_struct("", fields, visitor)
-    }
-}
-
-struct UnitVariantAccess {
-    variant: String,
-}
-
-impl<'de> EnumAccess<'de> for UnitVariantAccess {
-    type Error = crate::serde_error::Error;
-    type Variant = Impossible<(), crate::serde_error::Error>;
-
-    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
-    where
-        V: DeserializeSeed<'de>,
-    {
-        let deserializer: StringDeserializer<crate::serde_error::Error> =
-            StringDeserializer::new(self.variant);
-        let variant = seed.deserialize(deserializer)?;
-        Ok((variant, Impossible(PhantomData, PhantomData)))
-    }
-}
-
-struct Impossible<T, E>(PhantomData<fn() -> T>, PhantomData<E>);
-
-impl<'de, T, E: serde_crate::de::Error> VariantAccess<'de> for Impossible<T, E> {
-    type Error = E;
-
-    fn unit_variant(self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn newtype_variant_seed<U>(self, _: U) -> Result<U::Value, Self::Error>
-    where
-        U: DeserializeSeed<'de>,
-    {
-        unreachable!()
-    }
-
-    fn tuple_variant<V>(self, _: usize, _: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unreachable!()
-    }
-
-    fn struct_variant<V>(
-        self,
-        _fields: &'static [&'static str],
-        _visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        unreachable!()
     }
 }

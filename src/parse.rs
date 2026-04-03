@@ -399,7 +399,7 @@ impl<'a> Parser<'a> {
         Ok(token_index)
     }
 
-    fn parse_string(&mut self) -> Result<String, JsonParseError> {
+    pub(crate) fn parse_string(&mut self) -> Result<String, JsonParseError> {
         self.consume_byte(b'"')?;
         let start = self.index;
         loop {
@@ -653,7 +653,7 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_number(&mut self) -> Result<JsonNumber, JsonParseError> {
+    pub(crate) fn parse_number(&mut self) -> Result<JsonNumber, JsonParseError> {
         let start = self.index;
         self.try_consume_byte(b'-');
         if self.try_consume_byte(b'0') {

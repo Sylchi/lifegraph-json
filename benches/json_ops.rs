@@ -1,6 +1,8 @@
 #![feature(test)]
 extern crate test;
 
+#[cfg(feature = "serde")]
+use lifegraph_json::{from_str, to_value};
 use lifegraph_json::{
     parse_json, parse_json_borrowed, parse_json_tape, to_string, to_vec, CompiledTapeKeys,
     JsonValue, Map,
@@ -259,5 +261,36 @@ fn bench_repeated_tape_parse_plus_lookup(b: &mut Bencher) {
         let indexed = root.with_index(&index);
         let vals: Vec<_> = indexed.get_compiled_many(&keys).collect();
         black_box(vals.len());
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Serde integration benchmarks (feature-gated)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "serde")]
+#[bench]
+fn bench_serde_from_str_small_object(b: &mut Bencher) {
+    let json = r#"{"id":42,"name":"test","active":true}"#;
+    b.iter(|| {
+        let _: JsonValue = black_box(from_str(json)).unwrap();
+    });
+}
+
+#[cfg(feature = "serde")]
+#[bench]
+fn bench_serde_from_str_medium_object(b: &mut Bencher) {
+    let json = r#"{"user":{"id":12345,"name":"John Doe","email":"john@example.com","roles":["admin","user","editor"],"metadata":{"created":1234567890,"updated":9876543210,"tags":["a","b","c","d","e"]}},"status":"active","count":100}"#;
+    b.iter(|| {
+        let _: JsonValue = black_box(from_str(json)).unwrap();
+    });
+}
+
+#[cfg(feature = "serde")]
+#[bench]
+fn bench_serde_to_value_small(b: &mut Bencher) {
+    let obj = small_object();
+    b.iter(|| {
+        let _: JsonValue = black_box(to_value(&obj)).unwrap();
     });
 }

@@ -2,7 +2,7 @@ use crate::JsonValue;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Map(Vec<(String, JsonValue)>);
+pub struct Map(pub(crate) Vec<(String, JsonValue)>);
 
 impl Map {
     #[must_use]
