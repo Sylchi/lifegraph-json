@@ -118,10 +118,12 @@ impl Map {
         }
     }
 
+    #[cfg(feature = "serde")]
     pub(crate) fn into_vec(self) -> Vec<(String, JsonValue)> {
         self.0
     }
 
+    #[cfg(feature = "serde")]
     pub(crate) fn push_entry(&mut self, entry: (String, JsonValue)) {
         self.0.push(entry);
     }
