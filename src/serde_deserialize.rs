@@ -73,7 +73,7 @@ impl<'de> Deserializer<'de> {
         } else {
             Err(json_parse_error_to_serde(
                 self.remaining_input(),
-                crate::JsonParseError::UnexpectedTrailingCharacters(parser.index),
+                crate::JsonParseError::UnexpectedTrailingCharacters(parser.index()),
             ))
         }
     }
