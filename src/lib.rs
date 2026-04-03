@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::{Read, Write};
 use std::ops::{Index, IndexMut};
 
+mod borrowed_value;
 mod error;
 mod map;
 mod number;
@@ -16,6 +17,7 @@ mod serde_error;
 mod serde_serialize;
 mod util;
 
+pub use borrowed_value::BorrowedJsonValue;
 pub use error::{JsonError, JsonParseError};
 pub use map::Map;
 pub use number::JsonNumber;
@@ -39,16 +41,6 @@ pub enum JsonValue {
 
 pub type Value = JsonValue;
 pub type Number = JsonNumber;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum BorrowedJsonValue<'a> {
-    Null,
-    Bool(bool),
-    Number(JsonNumber),
-    String(Cow<'a, str>),
-    Array(Vec<BorrowedJsonValue<'a>>),
-    Object(Vec<(Cow<'a, str>, BorrowedJsonValue<'a>)>),
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompiledObjectSchema {
@@ -371,29 +363,6 @@ impl JsonValue {
                 }
             }
             _ => {}
-        }
-    }
-}
-
-impl<'a> BorrowedJsonValue<'a> {
-    pub fn into_owned(self) -> JsonValue {
-        match self {
-            Self::Null => JsonValue::Null,
-            Self::Bool(value) => JsonValue::Bool(value),
-            Self::Number(value) => JsonValue::Number(value),
-            Self::String(value) => JsonValue::String(value.into_owned()),
-            Self::Array(values) => JsonValue::Array(
-                values
-                    .into_iter()
-                    .map(BorrowedJsonValue::into_owned)
-                    .collect(),
-            ),
-            Self::Object(entries) => JsonValue::Object(
-                entries
-                    .into_iter()
-                    .map(|(key, value)| (key.into_owned(), value.into_owned()))
-                    .collect(),
-            ),
         }
     }
 }
