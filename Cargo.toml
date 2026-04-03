@@ -12,7 +12,7 @@ categories = ["encoding", "parser-implementations"]
 rust-version = "1.70"
 
 [features]
-default = ["std"]
+default = ["std", "serde"]
 std = []
 alloc = []
 indexmap = []
