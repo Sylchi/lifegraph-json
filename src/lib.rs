@@ -1,5 +1,3 @@
-use std::fmt;
-
 mod borrowed_value;
 mod error;
 mod index;

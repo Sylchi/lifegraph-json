@@ -1,4 +1,6 @@
-use crate::error::{JsonError, JsonParseError};
+#[cfg(not(feature = "serde"))]
+use crate::error::JsonError;
+use crate::error::JsonParseError;
 use crate::util;
 use crate::JsonValue;
 use std::io::{Read, Write};
