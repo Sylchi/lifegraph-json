@@ -1,40 +1,6 @@
-use crate::error::JsonParseError;
-use crate::parse::Parser;
-use crate::value::JsonValue;
-use std::borrow::Cow;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum BorrowedJsonValue<'a> {
-    Null,
-    Bool(bool),
-    Number(crate::JsonNumber),
-    String(Cow<'a, str>),
-    Array(Vec<BorrowedJsonValue<'a>>),
-    Object(Vec<(Cow<'a, str>, BorrowedJsonValue<'a>)>),
-}
-
-impl<'a> BorrowedJsonValue<'a> {
-    pub fn into_owned(self) -> JsonValue {
-        match self {
-            Self::Null => JsonValue::Null,
-            Self::Bool(value) => JsonValue::Bool(value),
-            Self::Number(value) => JsonValue::Number(value),
-            Self::String(value) => JsonValue::String(value.into_owned()),
-            Self::Array(values) => JsonValue::Array(
-                values
-                    .into_iter()
-                    .map(BorrowedJsonValue::into_owned)
-                    .collect(),
-            ),
-            Self::Object(entries) => JsonValue::Object(
-                entries
-                    .into_iter()
-                    .map(|(key, value)| (key.into_owned(), value.into_owned()))
-                    .collect(),
-            ),
-        }
-    }
-}
+use crate::error::JsonError;
+use crate::util;
+use crate::JsonValue;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompiledObjectSchema {
@@ -72,7 +38,7 @@ pub enum TapeTokenKind {
     Object,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TapeValue<'a> {
     tape: &'a JsonTape,
     input: &'a str,
@@ -84,7 +50,7 @@ pub struct TapeObjectIndex {
     buckets: Vec<Vec<(u64, usize, usize)>>,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct IndexedTapeObject<'a> {
     object: TapeValue<'a>,
     index: &'a TapeObjectIndex,
@@ -165,7 +131,7 @@ impl<'a> TapeValue<'a> {
                     index: i,
                 };
                 let key = candidate.as_str().unwrap_or("");
-                let hash = crate::util::hash_key(key.as_bytes());
+                let hash = util::hash_key(key.as_bytes());
                 entries.push((hash, i, i + 1));
                 i += 2;
             } else {
@@ -229,7 +195,7 @@ impl<'a> TapeValue<'a> {
 
 impl TapeObjectIndex {
     pub fn get<'a>(&self, object: TapeValue<'a>, key: &str) -> Option<TapeValue<'a>> {
-        self.get_hashed(object, crate::util::hash_key(key.as_bytes()), key)
+        self.get_hashed(object, util::hash_key(key.as_bytes()), key)
     }
 
     pub fn get_compiled<'a>(
@@ -266,7 +232,7 @@ impl TapeObjectIndex {
 impl CompiledTapeKey {
     pub fn new(key: impl Into<String>) -> Self {
         let key = key.into();
-        let hash = crate::util::hash_key(key.as_bytes());
+        let hash = util::hash_key(key.as_bytes());
         Self { key, hash }
     }
 
@@ -320,7 +286,7 @@ impl CompiledObjectSchema {
             if index > 0 {
                 rendered_prefix.push(b',');
             }
-            crate::util::write_json_key(&mut rendered_prefix, key);
+            util::write_json_key(&mut rendered_prefix, key);
             capacity_hint += rendered_prefix.len() + 8;
             fields.push(CompiledField {
                 key: (*key).to_owned(),
@@ -337,7 +303,7 @@ impl CompiledObjectSchema {
         self.fields.iter().map(|field| field.key.as_str())
     }
 
-    pub fn to_json_string<'a, I>(&self, values: I) -> Result<String, crate::error::JsonError>
+    pub fn to_json_string<'a, I>(&self, values: I) -> Result<String, JsonError>
     where
         I: IntoIterator<Item = &'a JsonValue>,
     {
@@ -346,7 +312,7 @@ impl CompiledObjectSchema {
         Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
-    pub fn write_json_bytes<'a, I>(&self, out: &mut Vec<u8>, values: I) -> Result<(), crate::error::JsonError>
+    pub fn write_json_bytes<'a, I>(&self, out: &mut Vec<u8>, values: I) -> Result<(), JsonError>
     where
         I: IntoIterator<Item = &'a JsonValue>,
     {
@@ -360,7 +326,7 @@ impl CompiledObjectSchema {
                 );
             };
             out.extend_from_slice(&field.rendered_prefix);
-            crate::util::write_json_value(out, value)?;
+            util::write_json_value(out, value)?;
         }
         if iter.next().is_some() {
             panic!(
@@ -387,7 +353,7 @@ impl CompiledRowSchema {
         &self.object
     }
 
-    pub fn to_json_string<'a, R, I>(&self, rows: R) -> Result<String, crate::error::JsonError>
+    pub fn to_json_string<'a, R, I>(&self, rows: R) -> Result<String, JsonError>
     where
         R: IntoIterator<Item = I>,
         I: IntoIterator<Item = &'a JsonValue>,
@@ -399,7 +365,7 @@ impl CompiledRowSchema {
         Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
-    pub fn write_json_bytes<'a, R, I>(&self, out: &mut Vec<u8>, rows: R) -> Result<(), crate::error::JsonError>
+    pub fn write_json_bytes<'a, R, I>(&self, out: &mut Vec<u8>, rows: R) -> Result<(), JsonError>
     where
         R: IntoIterator<Item = I>,
         I: IntoIterator<Item = &'a JsonValue>,
@@ -407,7 +373,7 @@ impl CompiledRowSchema {
         self.write_json_bytes_from_iter(out, rows.into_iter())
     }
 
-    pub fn write_row_json_bytes<'a, I>(&self, out: &mut Vec<u8>, values: I) -> Result<(), crate::error::JsonError>
+    pub fn write_row_json_bytes<'a, I>(&self, out: &mut Vec<u8>, values: I) -> Result<(), JsonError>
     where
         I: IntoIterator<Item = &'a JsonValue>,
     {
@@ -418,7 +384,7 @@ impl CompiledRowSchema {
         &self,
         out: &mut Vec<u8>,
         mut rows: R,
-    ) -> Result<(), crate::error::JsonError>
+    ) -> Result<(), JsonError>
     where
         R: Iterator<Item = I>,
         I: IntoIterator<Item = &'a JsonValue>,
