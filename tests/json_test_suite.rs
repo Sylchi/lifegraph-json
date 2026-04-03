@@ -2,17 +2,17 @@
 //!
 //! Run with: cargo test --test json_test_suite
 
-#[cfg(feature = "serde")]
-use lifegraph_json::from_slice;
-use lifegraph_json::{parse_json, JsonValue};
+type TestCaseSet = (
+    Vec<(String, Vec<u8>)>,
+    Vec<(String, Vec<u8>)>,
+    Vec<(String, Vec<u8>)>,
+);
+
+use lifegraph_json::parse_json;
 
 /// Load all test cases from the JSONTestSuite directory
 /// Files are named with prefixes: y_ (valid), n_ (invalid), i_ (implementation-defined)
-fn load_test_cases() -> (
-    Vec<(String, Vec<u8>)>,
-    Vec<(String, Vec<u8>)>,
-    Vec<(String, Vec<u8>)>,
-) {
+fn load_test_cases() -> TestCaseSet {
     let base_path = "tests/json_test_suite/test_parsing";
     let mut valid = Vec::new();
     let mut invalid = Vec::new();
@@ -26,7 +26,7 @@ fn load_test_cases() -> (
     if let Ok(entries) = std::fs::read_dir(base_path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 if let Ok(data) = std::fs::read(&path) {
                     let name = path.file_name().unwrap().to_string_lossy().to_string();
                     if name.starts_with("y_") {

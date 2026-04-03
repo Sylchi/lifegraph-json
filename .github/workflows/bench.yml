@@ -25,3 +25,6 @@ jobs:
 
       - name: Run json_ops benchmarks
         run: cargo bench --bench json_ops -- --test
+
+      - name: Run comparison benchmarks
+        run: cargo bench --bench comparison --features serde_json_bench -- --test

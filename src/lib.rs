@@ -1473,7 +1473,7 @@ impl ValueIndex for str {
 
     fn index_into_mut<'a>(&self, value: &'a mut JsonValue) -> Option<&'a mut JsonValue> {
         match value {
-            JsonValue::Object(entries) => object_get_mut(entries, self),
+            JsonValue::Object(entries) => object_get_mut(entries.as_mut_slice(), self),
             _ => None,
         }
     }
@@ -1510,7 +1510,7 @@ fn object_get<'a>(entries: &'a [(String, JsonValue)], key: &str) -> Option<&'a J
 }
 
 fn object_get_mut<'a>(
-    entries: &'a mut Vec<(String, JsonValue)>,
+    entries: &'a mut [(String, JsonValue)],
     key: &str,
 ) -> Option<&'a mut JsonValue> {
     entries
@@ -3298,7 +3298,7 @@ mod tests {
     #[test]
     fn json_macro_expr_key_parity_works() {
         let code = 200;
-        let features = vec!["serde", "json"];
+        let features = ["serde", "json"];
         let value = json!({
             "code": code,
             "success": code == 200,
@@ -3802,7 +3802,7 @@ mod tests {
             return random_leaf(rng);
         }
         match rng.choose(7) {
-            0 | 1 | 2 | 3 => random_leaf(rng),
+            0..=3 => random_leaf(rng),
             4 => {
                 let len = rng.choose(5);
                 let mut values = Vec::with_capacity(len);

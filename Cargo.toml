@@ -36,9 +36,7 @@ serde_bytes = "0.11"
 
 [[bench]]
 name = "json_ops"
-harness = false
 
 [[bench]]
 name = "comparison"
-harness = false
 required-features = ["serde_json_bench"]
