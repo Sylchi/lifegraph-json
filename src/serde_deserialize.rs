@@ -95,7 +95,7 @@ impl<'de> Deserializer<'de> {
             .parse_value()
             .map_err(|error| json_parse_error_to_serde(remaining, error))?;
         parser.skip_whitespace();
-        self.offset += parser.index;
+        self.offset += parser.index();
         Ok(value)
     }
 }
