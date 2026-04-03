@@ -12,6 +12,7 @@ mod serde_deserialize;
 mod serde_error;
 #[cfg(feature = "serde")]
 mod serde_serialize;
+mod util;
 
 pub use error::{JsonError, JsonParseError};
 
@@ -382,8 +383,8 @@ impl JsonValue {
     }
 
     pub fn to_json_string(&self) -> Result<String, JsonError> {
-        let mut out = Vec::with_capacity(initial_json_capacity(self));
-        write_json_value(&mut out, self)?;
+        let mut out = Vec::with_capacity(util::initial_json_capacity(self));
+        util::write_json_value(&mut out, self)?;
         Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
@@ -567,7 +568,7 @@ impl JsonValue {
         }
         let mut current = self;
         for segment in pointer.split('/').skip(1) {
-            let token = decode_pointer_segment(segment);
+            let token = util::decode_pointer_segment(segment);
             current = match current {
                 JsonValue::Object(entries) => entries
                     .iter()
@@ -589,7 +590,7 @@ impl JsonValue {
         }
         let mut current = self;
         for segment in pointer.split('/').skip(1) {
-            let token = decode_pointer_segment(segment);
+            let token = util::decode_pointer_segment(segment);
             current = match current {
                 JsonValue::Object(entries) => entries
                     .iter_mut()
@@ -652,7 +653,7 @@ impl CompiledObjectSchema {
             if index > 0 {
                 rendered_prefix.push(b',');
             }
-            write_json_key(&mut rendered_prefix, key);
+            util::write_json_key(&mut rendered_prefix, key);
             capacity_hint += rendered_prefix.len() + 8;
             fields.push(CompiledField {
                 key: (*key).to_owned(),
@@ -692,7 +693,7 @@ impl CompiledObjectSchema {
                 );
             };
             out.extend_from_slice(&field.rendered_prefix);
-            write_json_value(out, value)?;
+            util::write_json_value(out, value)?;
         }
         if iter.next().is_some() {
             panic!(
@@ -921,7 +922,7 @@ where
 
 pub fn escape_json_string(input: &str) -> String {
     let mut out = Vec::with_capacity(input.len() + 2);
-    write_escaped_json_string(&mut out, input);
+    util::write_escaped_json_string(&mut out, input);
     unsafe { String::from_utf8_unchecked(out) }
 }
 
@@ -1051,15 +1052,15 @@ where
     T: serde_crate::Serialize + ?Sized,
 {
     let json_value = to_value(value)?;
-    let mut out = Vec::with_capacity(initial_json_capacity(&json_value));
-    write_json_value(&mut out, &json_value)?;
+    let mut out = Vec::with_capacity(util::initial_json_capacity(&json_value));
+    util::write_json_value(&mut out, &json_value)?;
     Ok(out)
 }
 
 #[cfg(not(feature = "serde"))]
 pub fn to_vec(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
-    let mut out = Vec::with_capacity(initial_json_capacity(value));
-    write_json_value(&mut out, value)?;
+    let mut out = Vec::with_capacity(util::initial_json_capacity(value));
+    util::write_json_value(&mut out, value)?;
     Ok(out)
 }
 
@@ -1090,15 +1091,15 @@ where
     T: serde_crate::Serialize + ?Sized,
 {
     let json_value = to_value(value)?;
-    let mut out = Vec::with_capacity(initial_json_capacity(&json_value) + 16);
-    write_json_value_pretty(&mut out, &json_value, 0)?;
+    let mut out = Vec::with_capacity(util::initial_json_capacity(&json_value) + 16);
+    util::write_json_value_pretty(&mut out, &json_value, 0)?;
     Ok(unsafe { String::from_utf8_unchecked(out) })
 }
 
 #[cfg(not(feature = "serde"))]
 pub fn to_string_pretty(value: &JsonValue) -> Result<String, JsonError> {
-    let mut out = Vec::with_capacity(initial_json_capacity(value) + 16);
-    write_json_value_pretty(&mut out, value, 0)?;
+    let mut out = Vec::with_capacity(util::initial_json_capacity(value) + 16);
+    util::write_json_value_pretty(&mut out, value, 0)?;
     Ok(unsafe { String::from_utf8_unchecked(out) })
 }
 
@@ -1108,15 +1109,15 @@ where
     T: serde_crate::Serialize + ?Sized,
 {
     let json_value = to_value(value)?;
-    let mut out = Vec::with_capacity(initial_json_capacity(&json_value) + 16);
-    write_json_value_pretty(&mut out, &json_value, 0)?;
+    let mut out = Vec::with_capacity(util::initial_json_capacity(&json_value) + 16);
+    util::write_json_value_pretty(&mut out, &json_value, 0)?;
     Ok(out)
 }
 
 #[cfg(not(feature = "serde"))]
 pub fn to_vec_pretty(value: &JsonValue) -> Result<Vec<u8>, JsonError> {
-    let mut out = Vec::with_capacity(initial_json_capacity(value) + 16);
-    write_json_value_pretty(&mut out, value, 0)?;
+    let mut out = Vec::with_capacity(util::initial_json_capacity(value) + 16);
+    util::write_json_value_pretty(&mut out, value, 0)?;
     Ok(out)
 }
 
@@ -1199,7 +1200,7 @@ impl<'a> TapeValue<'a> {
                     index: i,
                 };
                 let key = candidate.as_str().unwrap_or("");
-                let hash = hash_key(key.as_bytes());
+                let hash = util::hash_key(key.as_bytes());
                 entries.push((hash, i, i + 1));
                 i += 2;
             } else {
@@ -1263,7 +1264,7 @@ impl<'a> TapeValue<'a> {
 
 impl TapeObjectIndex {
     pub fn get<'a>(&self, object: TapeValue<'a>, key: &str) -> Option<TapeValue<'a>> {
-        self.get_hashed(object, hash_key(key.as_bytes()), key)
+        self.get_hashed(object, util::hash_key(key.as_bytes()), key)
     }
 
     pub fn get_compiled<'a>(
@@ -1300,7 +1301,7 @@ impl TapeObjectIndex {
 impl CompiledTapeKey {
     pub fn new(key: impl Into<String>) -> Self {
         let key = key.into();
-        let hash = hash_key(key.as_bytes());
+        let hash = util::hash_key(key.as_bytes());
         Self { key, hash }
     }
 
@@ -1736,384 +1737,6 @@ macro_rules! json_internal {
         $crate::JsonValue::Object(object)
     }};
     ($other:expr) => { $crate::JsonValue::from($other) };
-}
-
-fn decode_pointer_segment(segment: &str) -> String {
-    let mut out = String::with_capacity(segment.len());
-    let bytes = segment.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'~' && i + 1 < bytes.len() {
-            match bytes[i + 1] {
-                b'0' => {
-                    out.push('~');
-                    i += 2;
-                    continue;
-                }
-                b'1' => {
-                    out.push('/');
-                    i += 2;
-                    continue;
-                }
-                _ => {}
-            }
-        }
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-    out
-}
-
-fn write_indent(out: &mut Vec<u8>, depth: usize) {
-    for _ in 0..depth {
-        out.extend_from_slice(b"  ");
-    }
-}
-
-fn write_json_value_pretty(
-    out: &mut Vec<u8>,
-    value: &JsonValue,
-    depth: usize,
-) -> Result<(), JsonError> {
-    match value {
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {
-            write_json_value(out, value)
-        }
-        JsonValue::Array(values) => {
-            out.push(b'[');
-            if !values.is_empty() {
-                out.push(b'\n');
-                for (index, value) in values.iter().enumerate() {
-                    if index > 0 {
-                        out.extend_from_slice(b",\n");
-                    }
-                    write_indent(out, depth + 1);
-                    write_json_value_pretty(out, value, depth + 1)?;
-                }
-                out.push(b'\n');
-                write_indent(out, depth);
-            }
-            out.push(b']');
-            Ok(())
-        }
-        JsonValue::Object(entries) => {
-            out.push(b'{');
-            if !entries.is_empty() {
-                out.push(b'\n');
-                for (index, (key, value)) in entries.iter().enumerate() {
-                    if index > 0 {
-                        out.extend_from_slice(b",\n");
-                    }
-                    write_indent(out, depth + 1);
-                    write_json_key(out, key);
-                    out.push(b' ');
-                    write_json_value_pretty(out, value, depth + 1)?;
-                }
-                out.push(b'\n');
-                write_indent(out, depth);
-            }
-            out.push(b'}');
-            Ok(())
-        }
-    }
-}
-
-fn hash_key(bytes: &[u8]) -> u64 {
-    let mut hash = 1469598103934665603u64;
-    for &byte in bytes {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(1099511628211u64);
-    }
-    hash
-}
-
-#[inline]
-fn write_json_value(out: &mut Vec<u8>, value: &JsonValue) -> Result<(), JsonError> {
-    match value {
-        JsonValue::Null => out.extend_from_slice(b"null"),
-        JsonValue::Bool(value) => {
-            if *value {
-                out.extend_from_slice(b"true");
-            } else {
-                out.extend_from_slice(b"false");
-            }
-        }
-        JsonValue::Number(number) => write_json_number(out, number)?,
-        JsonValue::String(value) => {
-            write_escaped_json_string(out, value);
-        }
-        JsonValue::Array(values) => {
-            write_json_array(out, values)?;
-        }
-        JsonValue::Object(entries) => {
-            write_json_object(out, entries)?;
-        }
-    }
-    Ok(())
-}
-
-#[inline]
-fn write_json_number(out: &mut Vec<u8>, value: &JsonNumber) -> Result<(), JsonError> {
-    match value {
-        JsonNumber::I64(value) => {
-            append_i64(out, *value);
-            Ok(())
-        }
-        JsonNumber::U64(value) => {
-            append_u64(out, *value);
-            Ok(())
-        }
-        JsonNumber::F64(value) => {
-            if !value.is_finite() {
-                return Err(JsonError::NonFiniteNumber);
-            }
-            out.extend_from_slice(value.to_string().as_bytes());
-            Ok(())
-        }
-    }
-}
-
-#[inline]
-fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
-    out.push(b'"');
-    let bytes = input.as_bytes();
-    let mut fast_index = 0usize;
-    while fast_index < bytes.len() {
-        let byte = bytes[fast_index];
-        if needs_escape(byte) {
-            break;
-        }
-        fast_index += 1;
-    }
-    if fast_index == bytes.len() {
-        out.extend_from_slice(bytes);
-        out.push(b'"');
-        return;
-    }
-
-    if fast_index > 0 {
-        out.extend_from_slice(&bytes[..fast_index]);
-    }
-
-    let mut chunk_start = fast_index;
-    for (index, byte) in bytes.iter().copied().enumerate().skip(fast_index) {
-        let escape = match byte {
-            b'"' => Some(br#"\""#.as_slice()),
-            b'\\' => Some(br#"\\"#.as_slice()),
-            0x08 => Some(br#"\b"#.as_slice()),
-            0x0c => Some(br#"\f"#.as_slice()),
-            b'\n' => Some(br#"\n"#.as_slice()),
-            b'\r' => Some(br#"\r"#.as_slice()),
-            b'\t' => Some(br#"\t"#.as_slice()),
-            _ => None,
-        };
-        if let Some(escape) = escape {
-            if chunk_start < index {
-                out.extend_from_slice(&bytes[chunk_start..index]);
-            }
-            out.extend_from_slice(escape);
-            chunk_start = index + 1;
-            continue;
-        }
-        if byte <= 0x1f {
-            if chunk_start < index {
-                out.extend_from_slice(&bytes[chunk_start..index]);
-            }
-            out.extend_from_slice(br#"\u00"#);
-            out.push(hex_digit((byte >> 4) & 0x0f));
-            out.push(hex_digit(byte & 0x0f));
-            chunk_start = index + 1;
-        }
-    }
-    if chunk_start < input.len() {
-        out.extend_from_slice(&bytes[chunk_start..]);
-    }
-    out.push(b'"');
-}
-
-#[inline]
-fn needs_escape(byte: u8) -> bool {
-    matches!(byte, b'"' | b'\\' | 0x00..=0x1f)
-}
-
-#[inline]
-fn write_json_array(out: &mut Vec<u8>, values: &[JsonValue]) -> Result<(), JsonError> {
-    out.push(b'[');
-    match values {
-        [] => {}
-        [one] => {
-            write_json_value(out, one)?;
-        }
-        [a, b] => {
-            write_json_value(out, a)?;
-            out.push(b',');
-            write_json_value(out, b)?;
-        }
-        [a, b, c] => {
-            write_json_value(out, a)?;
-            out.push(b',');
-            write_json_value(out, b)?;
-            out.push(b',');
-            write_json_value(out, c)?;
-        }
-        _ => {
-            let mut iter = values.iter();
-            if let Some(first) = iter.next() {
-                write_json_value(out, first)?;
-                for value in iter {
-                    out.push(b',');
-                    write_json_value(out, value)?;
-                }
-            }
-        }
-    }
-    out.push(b']');
-    Ok(())
-}
-
-#[inline]
-fn write_json_object(out: &mut Vec<u8>, entries: &[(String, JsonValue)]) -> Result<(), JsonError> {
-    out.push(b'{');
-    match entries {
-        [] => {}
-        [(k1, v1)] => {
-            write_json_key(out, k1);
-            write_json_value(out, v1)?;
-        }
-        [(k1, v1), (k2, v2)] => {
-            write_json_key(out, k1);
-            write_json_value(out, v1)?;
-            out.push(b',');
-            write_json_key(out, k2);
-            write_json_value(out, v2)?;
-        }
-        [(k1, v1), (k2, v2), (k3, v3)] => {
-            write_json_key(out, k1);
-            write_json_value(out, v1)?;
-            out.push(b',');
-            write_json_key(out, k2);
-            write_json_value(out, v2)?;
-            out.push(b',');
-            write_json_key(out, k3);
-            write_json_value(out, v3)?;
-        }
-        _ => {
-            let mut iter = entries.iter();
-            if let Some((first_key, first_value)) = iter.next() {
-                write_json_key(out, first_key);
-                write_json_value(out, first_value)?;
-                for (key, value) in iter {
-                    out.push(b',');
-                    write_json_key(out, key);
-                    write_json_value(out, value)?;
-                }
-            }
-        }
-    }
-    out.push(b'}');
-    Ok(())
-}
-
-#[inline]
-fn write_json_key(out: &mut Vec<u8>, key: &str) {
-    let bytes = key.as_bytes();
-    if is_plain_json_string(bytes) {
-        out.push(b'"');
-        out.extend_from_slice(bytes);
-        out.extend_from_slice(b"\":");
-    } else {
-        write_escaped_json_string(out, key);
-        out.push(b':');
-    }
-}
-
-#[inline]
-fn is_plain_json_string(bytes: &[u8]) -> bool {
-    for &byte in bytes {
-        if needs_escape(byte) {
-            return false;
-        }
-    }
-    true
-}
-
-fn initial_json_capacity(value: &JsonValue) -> usize {
-    match value {
-        JsonValue::Null => 4,
-        JsonValue::Bool(true) => 4,
-        JsonValue::Bool(false) => 5,
-        JsonValue::Number(JsonNumber::I64(value)) => estimate_i64_len(*value),
-        JsonValue::Number(JsonNumber::U64(value)) => estimate_u64_len(*value),
-        JsonValue::Number(JsonNumber::F64(_)) => 24,
-        JsonValue::String(value) => estimate_escaped_string_len(value),
-        JsonValue::Array(values) => 2 + values.len().saturating_mul(16),
-        JsonValue::Object(entries) => {
-            2 + entries
-                .iter()
-                .map(|(key, _)| estimate_escaped_string_len(key) + 8)
-                .sum::<usize>()
-        }
-    }
-}
-
-fn estimate_escaped_string_len(value: &str) -> usize {
-    let mut len = 2;
-    for ch in value.chars() {
-        len += match ch {
-            '"' | '\\' | '\u{08}' | '\u{0C}' | '\n' | '\r' | '\t' => 2,
-            ch if ch <= '\u{1F}' => 6,
-            ch => ch.len_utf8(),
-        };
-    }
-    len
-}
-
-fn estimate_u64_len(mut value: u64) -> usize {
-    let mut len = 1;
-    while value >= 10 {
-        value /= 10;
-        len += 1;
-    }
-    len
-}
-
-fn estimate_i64_len(value: i64) -> usize {
-    if value < 0 {
-        1 + estimate_u64_len(value.unsigned_abs())
-    } else {
-        estimate_u64_len(value as u64)
-    }
-}
-
-fn append_i64(out: &mut Vec<u8>, value: i64) {
-    if value < 0 {
-        out.push(b'-');
-        append_u64(out, value.unsigned_abs());
-    } else {
-        append_u64(out, value as u64);
-    }
-}
-
-fn append_u64(out: &mut Vec<u8>, mut value: u64) {
-    let mut buf = [0u8; 20];
-    let mut index = buf.len();
-    loop {
-        index -= 1;
-        buf[index] = b'0' + (value % 10) as u8;
-        value /= 10;
-        if value == 0 {
-            break;
-        }
-    }
-    out.extend_from_slice(&buf[index..]);
-}
-
-fn hex_digit(value: u8) -> u8 {
-    match value {
-        0..=9 => b'0' + value,
-        10..=15 => b'a' + (value - 10),
-        _ => unreachable!(),
-    }
 }
 
 struct Parser<'a> {
