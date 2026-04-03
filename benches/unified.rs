@@ -50,7 +50,7 @@ fn deep_json() -> String {
     for _ in 0..depth {
         s.push_str("{\"a\":");
     }
-    s.push_str("1");
+    s.push('1');
     for _ in 0..depth {
         s.push('}');
     }
