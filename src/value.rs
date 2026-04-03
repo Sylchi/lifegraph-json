@@ -46,7 +46,7 @@ use core::fmt;
 ///
 /// # Construction
 ///
-/// Use the [`json!`] macro for literal-like syntax, or the [`JsonValue::object`]
+/// Use the [`json!`](crate::json) macro for literal-like syntax, or the [`JsonValue::object`]
 /// and [`JsonValue::array`] constructors for programmatic building.
 ///
 /// # Example
@@ -130,7 +130,7 @@ impl JsonValue {
     ///
     /// # Errors
     ///
-    /// Returns [`JsonError::NonFiniteNumber`] if the value contains `NaN` or `Infinity`.
+    /// Returns [`crate::JsonError::NonFiniteNumber`] if the value contains `NaN` or `Infinity`.
     pub fn to_json_string(&self) -> Result<String, crate::error::JsonError> {
         let mut out = Vec::with_capacity(util::initial_json_capacity(self));
         util::write_json_value(&mut out, self)?;

@@ -1,5 +1,7 @@
+#[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
+#[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 

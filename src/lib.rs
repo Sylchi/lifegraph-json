@@ -44,16 +44,12 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(not(feature = "std"))]
-use alloc::borrow::ToOwned;
-#[cfg(not(feature = "std"))]
-use alloc::string::String;
-#[cfg(not(feature = "std"))]
-use alloc::string::ToString;
-#[cfg(not(feature = "std"))]
-use alloc::vec;
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
+// This crate requires either std or alloc. All JSON types use Vec and String.
+#[cfg(all(not(feature = "std"), not(feature = "alloc")))]
+compile_error!(
+    "lifegraph-json requires either the `std` or `alloc` feature. \
+     Use `--features alloc` for no_std mode, or enable default features for std."
+);
 
 mod borrowed_value;
 mod error;
@@ -110,6 +106,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
     use std::borrow::Cow;
 
     #[test]

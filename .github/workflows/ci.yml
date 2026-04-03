@@ -124,7 +124,6 @@ jobs:
     strategy:
       matrix:
         features:
-          - "--no-default-features"
           - "--no-default-features --features alloc"
           - "--no-default-features --features std"
           - "--features serde"

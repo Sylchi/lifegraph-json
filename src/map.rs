@@ -1,7 +1,5 @@
 #[cfg(not(feature = "std"))]
 use alloc::borrow::ToOwned;
-#[cfg(not(feature = "std"))]
-use alloc::string::ToString;
 
 #[cfg(not(feature = "std"))]
 use alloc::string::String;

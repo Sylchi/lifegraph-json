@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
 use alloc::vec;
 
