@@ -1,3 +1,14 @@
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::error::JsonError;
 use crate::util;
 use crate::JsonValue;

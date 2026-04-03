@@ -1,3 +1,56 @@
+//! # lifegraph-json
+//!
+//! A zero-dependency JSON crate with owned, borrowed, tape, and compiled-schema fast paths.
+//!
+//! # Quick Start
+//!
+//! ```
+//! use lifegraph_json::{json, from_str, to_string, Value};
+//!
+//! // Parse JSON
+//! let value: Value = from_str(r#"{"ok":true,"n":7}"#)?;
+//! assert_eq!(value["ok"].as_bool(), Some(true));
+//! assert_eq!(value["n"].as_i64(), Some(7));
+//!
+//! // Build JSON
+//! let built = json!({"msg": "hello", "items": [1, 2, null]});
+//! let encoded = to_string(&built)?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! # Parsing Paths
+//!
+//! - **Owned**: [`parse_json`] or [`from_str`] — standard full-copy parsing
+//! - **Borrowed**: [`parse_json_borrowed`] — zero-copy for strings/keys (lifetime-bound)
+//! - **Tape**: [`parse_json_tape`] — fast token stream with indexed lookups
+//!
+//! # Features
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `std` (default) | Standard library support |
+//! | `alloc` | Allocator support (no std) |
+//! | `serde` | Serde Serialize/Deserialize support |
+//! | `indexmap` | Use indexmap for ordered maps |
+//! | `raw_value` | Raw value support (requires serde) |
+//!
+//! # Zero Dependencies
+//!
+//! By default, this crate has **zero runtime dependencies**. The `serde` feature
+//! is optional and enables typed serialization/deserialization.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// This crate requires either std or alloc. All JSON types use Vec and String.
+#[cfg(all(not(feature = "std"), not(feature = "alloc")))]
+compile_error!(
+    "lifegraph-json requires either the `std` or `alloc` feature. \
+     Use `--features alloc` for no_std mode, or enable default features for std."
+);
+
 mod borrowed_value;
 mod error;
 mod index;
@@ -6,7 +59,7 @@ mod map;
 mod number;
 mod parse;
 mod partial_eq;
-#[cfg(all(feature = "serde", feature = "raw_value"))]
+#[cfg(feature = "raw_value")]
 mod raw;
 mod serde_api;
 #[cfg(feature = "serde")]
@@ -15,6 +68,8 @@ mod serde_deserialize;
 mod serde_error;
 #[cfg(feature = "serde")]
 mod serde_serialize;
+#[cfg(feature = "serde")]
+mod serde_streaming_serialize;
 mod tape;
 mod util;
 mod value;
@@ -25,10 +80,11 @@ pub use index::ValueIndex;
 pub use map::Map;
 pub use number::JsonNumber;
 pub use serde_api::{
-    escape_json_string, from_reader, from_slice, from_str, parse_json, parse_json_borrowed,
-    parse_json_tape, to_string, to_string_pretty, to_vec, to_vec_pretty, to_writer,
-    to_writer_pretty,
+    escape_json_string, from_slice, from_str, parse_json, parse_json_borrowed, parse_json_tape,
+    to_string, to_string_pretty, to_vec, to_vec_pretty,
 };
+#[cfg(feature = "std")]
+pub use serde_api::{from_reader, to_writer, to_writer_pretty};
 #[cfg(feature = "serde")]
 pub use serde_api::{from_value, to_value};
 pub use tape::{
@@ -37,7 +93,7 @@ pub use tape::{
 };
 pub use value::{JsonValue, Number, Value};
 
-#[cfg(all(feature = "serde", feature = "raw_value"))]
+#[cfg(feature = "raw_value")]
 pub use raw::{to_raw_value, RawValue};
 #[cfg(feature = "serde")]
 pub use serde_deserialize::JsonValueDeserializer;
@@ -50,6 +106,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
     use std::borrow::Cow;
 
     #[test]

@@ -1,10 +1,146 @@
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::borrowed_value::BorrowedJsonValue;
 use crate::error::JsonParseError;
 use crate::map::Map;
 use crate::number::JsonNumber;
 use crate::tape::{TapeToken, TapeTokenKind};
 use crate::JsonValue;
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+#[cfg(feature = "std")]
 use std::borrow::Cow;
+
+/// Optimized unsigned 64-bit integer parser.
+/// Parses a decimal string slice into u64 without allocation.
+/// Returns None on overflow or invalid input.
+pub(crate) fn parse_u64_fast(s: &str) -> Option<u64> {
+    if s.is_empty() {
+        return None;
+    }
+
+    let bytes = s.as_bytes();
+
+    // Fast path for small numbers (common case)
+    if bytes.len() <= 3 {
+        let mut val: u64 = 0;
+        for &b in bytes {
+            if !b.is_ascii_digit() {
+                return None;
+            }
+            val = val * 10 + (b - b'0') as u64;
+        }
+        return Some(val);
+    }
+
+    // Validate all bytes are digits first
+    for &b in bytes {
+        if !b.is_ascii_digit() {
+            return None;
+        }
+    }
+
+    // Process 18 digits at a time using u128 to avoid overflow checks
+    let mut result: u64;
+    let mut pos: usize;
+
+    // Handle first chunk specially to avoid initial zero
+    let chunk_size = if bytes.len() % 18 == 0 {
+        18
+    } else {
+        bytes.len() % 18
+    };
+
+    // Parse first chunk
+    let mut chunk_val: u64 = 0;
+    for &byte in bytes.iter().take(chunk_size) {
+        chunk_val = chunk_val * 10 + (byte - b'0') as u64;
+    }
+    result = chunk_val;
+    pos = chunk_size;
+
+    // Process remaining chunks of 18 digits
+    while pos < bytes.len() {
+        let chunk_end = (pos + 18).min(bytes.len());
+
+        // Use u128 for intermediate calculation to handle potential overflow
+        let mut chunk_u128: u128 = 0;
+        for &byte in bytes.iter().skip(pos).take(chunk_end - pos) {
+            chunk_u128 = chunk_u128 * 10 + (byte - b'0') as u128;
+        }
+
+        // Check if chunk fits in u64
+        if chunk_u128 > u64::MAX as u128 {
+            return None; // Overflow
+        }
+        let chunk_val = chunk_u128 as u64;
+
+        // Multiply result by 10^18 and add chunk
+        // Check for overflow
+        let multiplier = 10u64.pow((chunk_end - pos) as u32);
+        let (new_result, overflow) = result.overflowing_mul(multiplier);
+        if overflow {
+            return None;
+        }
+        let (new_result, overflow) = new_result.overflowing_add(chunk_val);
+        if overflow {
+            return None;
+        }
+        result = new_result;
+
+        pos = chunk_end;
+    }
+
+    Some(result)
+}
+
+/// Optimized signed 64-bit integer parser.
+/// Parses a decimal string slice (possibly with leading '-') into i64.
+/// Returns None on overflow or invalid input.
+pub(crate) fn parse_i64_fast(s: &str) -> Option<i64> {
+    if s.is_empty() {
+        return None;
+    }
+
+    let bytes = s.as_bytes();
+    let (negative, digits) = if bytes[0] == b'-' {
+        if bytes.len() == 1 {
+            return None; // Just "-" is invalid
+        }
+        (true, &bytes[1..])
+    } else {
+        (false, bytes)
+    };
+
+    // Parse as unsigned first
+    let unsigned_val = parse_u64_fast(core::str::from_utf8(digits).ok()?)?;
+
+    if negative {
+        // For negative numbers, we need to handle i64::MIN specially
+        // i64::MIN = -9223372036854775808, which is one more than i64::MAX in absolute value
+        if unsigned_val > (i64::MAX as u64) + 1 {
+            return None; // Overflow
+        }
+        // Handle i64::MIN specially to avoid overflow with negation
+        if unsigned_val == (i64::MAX as u64) + 1 {
+            Some(i64::MIN)
+        } else {
+            // Safe to negate because unsigned_val <= i64::MAX
+            Some(-(unsigned_val as i64))
+        }
+    } else {
+        if unsigned_val > i64::MAX as u64 {
+            return None; // Overflow for i64
+        }
+        Some(unsigned_val as i64)
+    }
+}
 
 pub(crate) struct Parser<'a> {
     input: &'a str,
@@ -399,7 +535,7 @@ impl<'a> Parser<'a> {
         Ok(token_index)
     }
 
-    fn parse_string(&mut self) -> Result<String, JsonParseError> {
+    pub(crate) fn parse_string(&mut self) -> Result<String, JsonParseError> {
         self.consume_byte(b'"')?;
         let start = self.index;
         loop {
@@ -653,7 +789,7 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_number(&mut self) -> Result<JsonNumber, JsonParseError> {
+    pub(crate) fn parse_number(&mut self) -> Result<JsonNumber, JsonParseError> {
         let start = self.index;
         self.try_consume_byte(b'-');
         if self.try_consume_byte(b'0') {
@@ -688,14 +824,12 @@ impl<'a> Parser<'a> {
             }
             Ok(JsonNumber::F64(value))
         } else if token.starts_with('-') {
-            let value = token
-                .parse::<i64>()
-                .map_err(|_| JsonParseError::InvalidNumber { index: start })?;
+            let value =
+                parse_i64_fast(token).ok_or(JsonParseError::InvalidNumber { index: start })?;
             Ok(JsonNumber::I64(value))
         } else {
-            let value = token
-                .parse::<u64>()
-                .map_err(|_| JsonParseError::InvalidNumber { index: start })?;
+            let value =
+                parse_u64_fast(token).ok_or(JsonParseError::InvalidNumber { index: start })?;
             Ok(JsonNumber::U64(value))
         }
     }

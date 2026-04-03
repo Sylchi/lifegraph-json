@@ -267,3 +267,123 @@ fn test_depth_limiting() {
         "Expected NestingTooDeep error, got: {result:?}"
     );
 }
+
+/// Validate that valid JSON files parse to correct values by comparing with serde_json
+#[cfg(feature = "serde")]
+#[test]
+fn test_valid_json_value_correctness() {
+    use lifegraph_json as lg_json;
+    use serde_json_upstream as sj_json;
+
+    let (cases, _, _) = load_test_cases();
+    if cases.is_empty() {
+        eprintln!("No valid JSON test cases found");
+        return;
+    }
+
+    let mut passed = 0;
+    let mut failed = Vec::new();
+    let mut skipped = 0;
+
+    for (name, data) in cases {
+        let data_str = match std::str::from_utf8(&data) {
+            Ok(s) => s,
+            Err(_) => {
+                skipped += 1; // Invalid UTF-8
+                continue;
+            }
+        };
+
+        // Parse with both crates
+        let lg_result = lg_json::from_str::<lg_json::Value>(data_str);
+        let sj_result = sj_json::from_str::<sj_json::Value>(data_str);
+
+        // Both should succeed or both should fail
+        match (&lg_result, &sj_result) {
+            (Ok(lg_val), Ok(sj_val)) => {
+                // Compare values
+                if values_equal(lg_val, sj_val) {
+                    passed += 1;
+                } else {
+                    failed.push((
+                        name,
+                        format!(
+                            "Value mismatch:\n  lifegraph: {:?}\n  serde_json: {:?}",
+                            lg_val, sj_val
+                        ),
+                    ));
+                }
+            }
+            (Ok(_), Err(_)) => {
+                failed.push((name, "lifegraph parsed but serde_json failed".to_string()));
+            }
+            (Err(_), Ok(_)) => {
+                failed.push((name, "serde_json parsed but lifegraph failed".to_string()));
+            }
+            (Err(_), Err(_)) => {
+                // Both failed - that's consistent
+                passed += 1;
+            }
+        }
+    }
+
+    if !failed.is_empty() {
+        eprintln!("\n=== FAILED VALUE CORRECTNESS TESTS ===");
+        for (name, reason) in &failed {
+            eprintln!("  {name}: {reason}");
+        }
+        panic!(
+            "{} of {} valid JSON value tests failed ({} skipped)",
+            failed.len(),
+            passed + failed.len(),
+            skipped
+        );
+    }
+
+    eprintln!(
+        "Passed {} valid JSON value tests ({} skipped)",
+        passed, skipped
+    );
+}
+
+/// Compare lifegraph-json and serde_json values for equality
+#[cfg(feature = "serde")]
+fn values_equal(lg: &lifegraph_json::Value, sj: &serde_json_upstream::Value) -> bool {
+    use lifegraph_json as lg_json;
+    use serde_json_upstream as sj_json;
+
+    match (lg, sj) {
+        (lg_json::Value::Null, sj_json::Value::Null) => true,
+        (lg_json::Value::Bool(a), sj_json::Value::Bool(b)) => a == b,
+        (lg_json::Value::String(a), sj_json::Value::String(b)) => a == b,
+        (lg_json::Value::Number(a), sj_json::Value::Number(b)) => {
+            // Compare numbers with tolerance for float precision
+            if let (Some(a_i), Some(b_i)) = (a.as_i64(), b.as_i64()) {
+                return a_i == b_i;
+            }
+            if let (Some(a_u), Some(b_u)) = (a.as_u64(), b.as_u64()) {
+                return a_u == b_u;
+            }
+            let a_f = a.as_f64().unwrap_or(f64::NAN);
+            let b_f = b.as_f64().unwrap_or(f64::NAN);
+            if a_f.is_nan() && b_f.is_nan() {
+                return true;
+            }
+            (a_f - b_f).abs() < 1e-6
+        }
+        (lg_json::Value::Array(a), sj_json::Value::Array(b)) => {
+            if a.len() != b.len() {
+                return false;
+            }
+            a.iter().zip(b.iter()).all(|(la, sb)| values_equal(la, sb))
+        }
+        (lg_json::Value::Object(a), sj_json::Value::Object(b)) => {
+            if a.len() != b.len() {
+                return false;
+            }
+            a.iter()
+                .all(|(lk, lv)| b.get(lk).map(|sv| values_equal(lv, sv)).unwrap_or(false))
+        }
+        _ => false,
+    }
+}

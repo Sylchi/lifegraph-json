@@ -47,7 +47,7 @@ If you want a small, fast, hackable JSON layer with aggressive specialized paths
 | Feature | `lifegraph-json` | `serde_json` |
 |---------|-----------------|--------------|
 | Runtime dependencies | **0** (by default) | serde (1+) |
-| Parse speed | **Up to 3.78× faster** | Baseline |
+| Parse speed | **Up to 3.78× faster** (tape path) | Baseline |
 | Tape parsing | ✅ Yes | ❌ No |
 | Compiled schemas | ✅ Yes | ❌ No |
 | Serde integration | Optional | Built-in |
@@ -78,11 +78,101 @@ When the `serde` feature is enabled, the crate provides its own local implementa
 
 That means the main serde-compatible API surface is available without delegating back to upstream `serde_json`.
 
+### What works and what doesn't?
+
+For a comprehensive breakdown of compatibility, known differences, and limitations:
+
+📖 **[See COMPATIBILITY_GUIDE.md](docs/COMPATIBILITY_GUIDE.md)**
+
+**Quick summary**:
+- ✅ **90%+ of serde_json use cases**: Drop-in replacement with `serde` feature
+- ✅ Same API surface for common patterns
+- ✅ Better performance (up to 3.78x faster parsing)
+- ⚠️ Minor differences: float precision edge cases, key ordering (always preserved)
+- ❌ Missing: Low-level streaming APIs, some advanced serde features
+
 What is still intentionally out of scope is the broader `serde_json` ecosystem surface beyond these APIs. If you need obscure upstream-specific behavior or exact implementation parity in edge cases, evaluate those cases directly.
 
 The crate keeps an upstream `serde_json` copy only in dev/test dependencies as a parity oracle. Runtime parse and serialize behavior is implemented locally.
 
 If you want a **fast zero-runtime-dependency-by-default JSON layer with a local serde-compatible path**, use `lifegraph-json`.
+
+## Pros and Cons vs serde_json
+
+### When lifegraph-json Excels
+
+**🚀 Performance-critical parse-and-inspect workloads**
+- Tape parsing is up to **3.78× faster** than serde_json on the json-benchmark corpus
+- Borrowed parsing avoids String allocations for string values and keys
+- Ideal when you parse JSON, read a few fields, and discard
+
+**📦 Zero runtime dependencies**
+- No serde dependency unless you enable the `serde` feature
+- Smaller compile times, simpler dependency tree
+- Useful for projects minimizing external dependencies
+
+**🔍 Field access on wide objects**
+- Optimized lookup for objects with many keys
+- Tape indexed lookup for repeated field access patterns
+- Better performance when reading specific fields from large JSON
+
+**⚡ Specialized parsing paths**
+- Owned parsing: standard full-copy approach
+- Borrowed parsing: zero-copy for strings/keys (lifetime-bound)
+- Tape parsing: fast token stream with indexed lookups
+- Choose the right path for your workload
+
+**🔄 Repeated serialization**
+- Efficient for serializing the same structure many times
+- Known object shapes serialize faster
+- Good for generating JSON templates or responses
+
+### When serde_json is Better
+
+**🌐 Ecosystem integration**
+- Works seamlessly with serde-derived types across the ecosystem
+- Most Rust libraries expect serde_json::Value
+- Established compatibility with ORMs, web frameworks, etc.
+
+**📝 Typed deserialization out-of-the-box**
+- No feature flags needed for `from_str::<T>`
+- Derive macros work immediately
+- No configuration required
+
+**🔧 Advanced serde features**
+- `#[serde(rename)]`, `#[serde(default)]`, `#[serde(skip)]` attributes
+- Custom serialization via `Serialize`/`Deserialize` impls
+- Flatten, tag, and other complex serde patterns
+- Untagged enums and complex type mappings
+
+**📊 Streaming APIs**
+- `Deserializer::from_reader` for large files
+- Incremental parsing for memory-constrained environments
+- Stream processing of JSON arrays/objects
+
+**🎯 Exact precision and edge cases**
+- Battle-tested float handling
+- Precise control over number formatting
+- Years of edge-case resolutions in production
+
+**📖 Documentation and community**
+- Extensive docs, tutorials, and Stack Overflow answers
+- Large community for troubleshooting
+- Proven in production at scale across thousands of projects
+
+### Decision Guide
+
+| Your Use Case | Recommendation |
+|---------------|----------------|
+| Parse JSON, read 2-3 fields, discard | **lifegraph-json** (tape/borrowed) |
+| Zero dependencies required | **lifegraph-json** |
+| Full serde ecosystem types | **serde_json** |
+| Complex `#[serde(...)]` attributes | **serde_json** |
+| Stream large files from disk/network | **serde_json** |
+| Serialize same structure repeatedly | **lifegraph-json** |
+| Simple Value-based JSON handling | **Both work** (lifegraph faster) |
+| Production-critical edge cases | **serde_json** (more battle-tested) |
+| Maximum parse speed needed | **lifegraph-json** |
 
 ## Performance
 
@@ -95,9 +185,21 @@ Benchmarked against the [`serde-rs/json-benchmark`](https://github.com/serde-rs/
 | Tape parse | **2.93×** faster | **3.78×** (`twitter.json`) |
 | DOM stringify | 1.42× slower | 1.12× faster |
 
-The tape parsing path is the killer feature—up to **3.78× faster** than `serde_json` for parse-and-inspect workloads.
+**Important notes about these measurements:**
 
-See [benches/](benches/) for detailed benchmarks.
+- **Tape parse** is a lifegraph-json-specific feature that creates a token stream. serde_json has no equivalent, so this measures lifegraph against itself on different workloads. The "3.78× faster" claim refers to tape parsing vs serde_json's Value parsing on `twitter.json`.
+- **Owned/borrowed parse** compares `parse_json()` → `JsonValue` vs `serde_json::from_str()` → `Value` (equivalent operations)
+- **DOM stringify** measures `JsonValue::to_string()` vs `serde_json::Value::to_string()` (equivalent operations)
+- Benchmarks now use **symmetric fixture construction** (both libraries construct test data identically, not via macros)
+- All benchmarks report **bytes processed** for throughput measurement (MB/s)
+
+**When to care about which metric:**
+- Parse-and-inspect: Tape/borrowed paths are fastest
+- Full deserialization: Owned parse is competitive
+- Serialization: serde_json is generally faster for DOM stringify
+- Typed serde: Both perform similarly (depends on your types)
+
+See [benches/](benches/) for detailed benchmarks. Run with `cargo bench --features serde_json_bench`.
 
 ## What feels drop-in already
 

@@ -1,4 +1,14 @@
+#[allow(unused_imports)]
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[allow(unused_imports)]
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::JsonValue;
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+#[cfg(feature = "std")]
 use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq)]

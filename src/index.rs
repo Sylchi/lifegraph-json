@@ -1,6 +1,13 @@
+#[allow(unused_imports)]
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[allow(unused_imports)]
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::map::Map;
 use crate::JsonValue;
-use std::ops::{Index, IndexMut};
+use core::ops::{Index, IndexMut};
 
 pub trait ValueIndex {
     fn index_into<'a>(&self, value: &'a JsonValue) -> Option<&'a JsonValue>;

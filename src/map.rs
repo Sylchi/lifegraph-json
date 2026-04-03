@@ -1,8 +1,16 @@
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::JsonValue;
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Map(Vec<(String, JsonValue)>);
+pub struct Map(pub(crate) Vec<(String, JsonValue)>);
 
 impl Map {
     #[must_use]
@@ -55,7 +63,7 @@ impl Map {
 
     pub fn insert(&mut self, key: String, value: JsonValue) -> Option<JsonValue> {
         if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
-            return Some(std::mem::replace(existing, value));
+            return Some(core::mem::replace(existing, value));
         }
         self.0.push((key, value));
         None
@@ -104,7 +112,7 @@ impl Map {
         value: JsonValue,
     ) -> Option<JsonValue> {
         if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
-            return Some(std::mem::replace(existing, value));
+            return Some(core::mem::replace(existing, value));
         }
         let index = index.min(self.0.len());
         self.0.insert(index, (key, value));
@@ -123,16 +131,6 @@ impl Map {
             &mut self.0.last_mut().unwrap().1
         }
     }
-
-    #[cfg(feature = "serde")]
-    pub(crate) fn into_vec(self) -> Vec<(String, JsonValue)> {
-        self.0
-    }
-
-    #[cfg(feature = "serde")]
-    pub(crate) fn push_entry(&mut self, entry: (String, JsonValue)) {
-        self.0.push(entry);
-    }
 }
 
 impl Default for Map {
@@ -147,7 +145,7 @@ impl From<Vec<(String, JsonValue)>> for Map {
     }
 }
 
-impl std::iter::FromIterator<(String, JsonValue)> for Map {
+impl core::iter::FromIterator<(String, JsonValue)> for Map {
     fn from_iter<T: IntoIterator<Item = (String, JsonValue)>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }

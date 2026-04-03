@@ -1,3 +1,8 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::serde_error::Error;
 use crate::JsonParseError;
 use serde_crate::de::{

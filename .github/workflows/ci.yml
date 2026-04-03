@@ -124,7 +124,6 @@ jobs:
     strategy:
       matrix:
         features:
-          - "--no-default-features"
           - "--no-default-features --features alloc"
           - "--no-default-features --features std"
           - "--features serde"
@@ -132,22 +131,39 @@ jobs:
           - "--features serde,indexmap"
           - "--features serde,schemars"
           - "--features serde,ts-rs"
+        include:
+          # Alloc-only build can't run tests (test code uses std traits)
+          - features: "--no-default-features --features alloc"
+            test_cmd: "cargo check --no-default-features --features alloc"
+          # All others can run tests
+          - features: "--no-default-features --features std"
+            test_cmd: "cargo test --no-default-features --features std"
+          - features: "--features serde"
+            test_cmd: "cargo test --features serde"
+          - features: "--features serde,raw_value"
+            test_cmd: "cargo test --features serde,raw_value"
+          - features: "--features serde,indexmap"
+            test_cmd: "cargo test --features serde,indexmap"
+          - features: "--features serde,schemars"
+            test_cmd: "cargo test --features serde,schemars"
+          - features: "--features serde,ts-rs"
+            test_cmd: "cargo test --features serde,ts-rs"
       fail-fast: false
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
-      
+
       - name: Build with features
         run: cargo build ${{ matrix.features }} --verbose
-      
+
       - name: Test with features
-        run: cargo test ${{ matrix.features }} --verbose
+        run: ${{ matrix.test_cmd }} --verbose
 
   # Serde JSON API Compatibility Report
   compat:

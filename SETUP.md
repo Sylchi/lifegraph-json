@@ -99,6 +99,13 @@ This document summarizes the repository setup for production readiness.
 ### 8. Documentation (`docs/`)
 - `MIRI.md` - Miri validation guide
 - `FUZZING.md` - Fuzzing guide
+- `COMPATIBILITY_GUIDE.md` - Serde compatibility documentation
+- `SERDE_FEATURE.md` - Serde feature overview
+- `TEST_IMPROVEMENTS.md` - Test coverage details
+- `API_COMPARISON.md` - API comparison with serde_json
+- `API_PARITY_REPORT.md` - API parity report
+- `QUICK_REFERENCE.md` - Quick reference guide
+- `BRANCH_PROTECTION.md` - Git branch protection guidelines
 - `SETUP.md` - This summary
 
 ### 9. README Updates
@@ -130,11 +137,17 @@ lifegraph-json/
 │   ├── pre-push            # Full test suite
 │   └── post-merge          # Post-pull verification
 ├── benches/
-│   ├── comparison.rs
-│   └── json_ops.rs
+│   └── unified.rs          # Criterion benchmark suite
 ├── docs/
+│   ├── API_COMPARISON.md   # API comparison with serde_json
+│   ├── API_PARITY_REPORT.md# API parity report
+│   ├── BRANCH_PROTECTION.md# Git branch protection
+│   ├── COMPATIBILITY_GUIDE.md # Serde compatibility docs
 │   ├── FUZZING.md          # Fuzzing guide
-│   └── MIRI.md             # Miri guide
+│   ├── MIRI.md             # Miri guide
+│   ├── QUICK_REFERENCE.md  # Quick reference
+│   ├── SERDE_FEATURE.md    # Serde feature overview
+│   └── TEST_IMPROVEMENTS.md# Test coverage details
 ├── fuzz/
 │   ├── Cargo.toml
 │   └── fuzz_targets/
@@ -142,25 +155,38 @@ lifegraph-json/
 │       ├── roundtrip.rs    # Roundtrip fuzzer
 │       └── tape.rs         # Tape fuzzer
 ├── scripts/
+│   ├── compat_report.sh    # Serde compatibility report
 │   ├── fuzz.sh             # Fuzzing runner
 │   ├── miri.sh             # Miri runner
 │   ├── release.sh          # Release automation
 │   └── setup.sh            # Project setup
 ├── src/
-│   ├── lib.rs
-│   ├── parse.rs
-│   ├── map.rs
-│   ├── error.rs
-│   ├── serde_deserialize.rs
-│   ├── serde_serialize.rs
-│   └── ...
+│   ├── lib.rs              # Crate root with exports
+│   ├── parse.rs            # JSON parser
+│   ├── value.rs            # JsonValue type
+│   ├── map.rs              # JSON object map
+│   ├── number.rs           # JsonNumber type
+│   ├── error.rs            # Error types
+│   ├── serde_api.rs        # High-level API
+│   ├── serde_deserialize.rs# Serde deserialization
+│   ├── serde_serialize.rs  # Serde serialization
+│   ├── serde_streaming_serialize.rs # Streaming serializer
+│   ├── serde_error.rs      # Serde error type
+│   ├── tape.rs             # Tape parsing
+│   ├── borrowed_value.rs   # Borrowed JSON type
+│   ├── json_macro.rs       # json! macro
+│   ├── partial_eq.rs       # PartialEq impls
+│   ├── index.rs            # ValueIndex trait
+│   ├── util.rs             # Utility functions
+│   └── raw.rs              # Raw value support
 ├── tests/
 │   ├── behavioral_parity.rs
 │   ├── from_str_typed.rs
 │   ├── from_value.rs
 │   ├── to_string_typed.rs
 │   ├── json_test_suite.rs  # JSONTestSuite harness
-│   └── unicode.rs          # Unicode tests
+│   ├── unicode.rs          # Unicode tests
+│   └── serde_map_test.rs   # Serde map tests
 ├── .gitignore
 ├── CHANGELOG.md
 ├── Cargo.toml
@@ -168,7 +194,7 @@ lifegraph-json/
 ├── LICENSE-APACHE          # Apache 2.0 text
 ├── LICENSE-MIT             # MIT text
 ├── README.md
-├── STATUS.md               # Project status tracker
+├── PARITY_REPORT.md        # API parity report
 └── SETUP.md                # This file
 ```
 
