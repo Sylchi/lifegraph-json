@@ -1,8 +1,18 @@
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
+#[cfg(not(feature = "std"))]
+use alloc::string::ToString;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::map::Map;
 use crate::number::JsonNumber;
 use crate::util;
 use crate::ValueIndex;
-use std::fmt;
+use core::fmt;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum JsonValue {
@@ -229,7 +239,7 @@ impl JsonValue {
     }
 
     pub fn take(&mut self) -> JsonValue {
-        std::mem::replace(self, JsonValue::Null)
+        core::mem::replace(self, JsonValue::Null)
     }
 
     #[must_use]
@@ -427,7 +437,7 @@ where
     }
 }
 
-impl<K, V> std::iter::FromIterator<(K, V)> for JsonValue
+impl<K, V> core::iter::FromIterator<(K, V)> for JsonValue
 where
     K: Into<String>,
     V: Into<JsonValue>,
@@ -442,7 +452,7 @@ where
     }
 }
 
-impl<T> std::iter::FromIterator<T> for JsonValue
+impl<T> core::iter::FromIterator<T> for JsonValue
 where
     T: Into<JsonValue>,
 {

@@ -1,8 +1,14 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 #[cfg(not(feature = "serde"))]
 use crate::error::JsonError;
 use crate::error::JsonParseError;
 use crate::util;
 use crate::JsonValue;
+#[cfg(feature = "std")]
 use std::io::{Read, Write};
 
 // ---------------------------------------------------------------------------
@@ -100,7 +106,7 @@ where
 
 #[cfg(not(feature = "serde"))]
 pub fn from_slice(input: &[u8]) -> Result<JsonValue, JsonParseError> {
-    let input = std::str::from_utf8(input).map_err(|_| JsonParseError::InvalidUtf8)?;
+    let input = core::str::from_utf8(input).map_err(|_| JsonParseError::InvalidUtf8)?;
     parse_json(input)
 }
 
@@ -116,7 +122,7 @@ where
     Ok(value)
 }
 
-#[cfg(not(feature = "serde"))]
+#[cfg(all(not(feature = "serde"), feature = "std"))]
 pub fn from_reader<R: Read>(mut reader: R) -> Result<JsonValue, JsonParseError> {
     let mut input = String::new();
     reader
@@ -174,7 +180,7 @@ where
     })
 }
 
-#[cfg(not(feature = "serde"))]
+#[cfg(all(not(feature = "serde"), feature = "std"))]
 pub fn to_writer<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonError> {
     let bytes = to_vec(value)?;
     writer.write_all(&bytes).map_err(|_| JsonError::Io)
@@ -231,7 +237,7 @@ where
     })
 }
 
-#[cfg(not(feature = "serde"))]
+#[cfg(all(not(feature = "serde"), feature = "std"))]
 pub fn to_writer_pretty<W: Write>(mut writer: W, value: &JsonValue) -> Result<(), JsonError> {
     let bytes = to_vec_pretty(value)?;
     writer.write_all(&bytes).map_err(|_| JsonError::Io)

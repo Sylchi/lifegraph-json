@@ -1,9 +1,22 @@
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
+#[cfg(not(feature = "std"))]
+use alloc::string::ToString;
+
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::borrowed_value::BorrowedJsonValue;
 use crate::error::JsonParseError;
 use crate::map::Map;
 use crate::number::JsonNumber;
 use crate::tape::{TapeToken, TapeTokenKind};
 use crate::JsonValue;
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+#[cfg(feature = "std")]
 use std::borrow::Cow;
 
 pub(crate) struct Parser<'a> {

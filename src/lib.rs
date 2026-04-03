@@ -1,3 +1,19 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::borrow::ToOwned;
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::string::ToString;
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 mod borrowed_value;
 mod error;
 mod index;
@@ -25,10 +41,11 @@ pub use index::ValueIndex;
 pub use map::Map;
 pub use number::JsonNumber;
 pub use serde_api::{
-    escape_json_string, from_reader, from_slice, from_str, parse_json, parse_json_borrowed,
-    parse_json_tape, to_string, to_string_pretty, to_vec, to_vec_pretty, to_writer,
-    to_writer_pretty,
+    escape_json_string, from_slice, from_str, parse_json, parse_json_borrowed, parse_json_tape,
+    to_string, to_string_pretty, to_vec, to_vec_pretty,
 };
+#[cfg(feature = "std")]
+pub use serde_api::{from_reader, to_writer, to_writer_pretty};
 #[cfg(feature = "serde")]
 pub use serde_api::{from_value, to_value};
 pub use tape::{

@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+
 #[macro_export]
 macro_rules! json_unexpected {
     ($unexpected:tt) => {

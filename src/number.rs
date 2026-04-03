@@ -1,4 +1,4 @@
-use std::fmt;
+use core::fmt;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonNumber {

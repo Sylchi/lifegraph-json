@@ -1,3 +1,8 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::JsonValue;
 
 fn eq_i64(value: &JsonValue, other: i64) -> bool {

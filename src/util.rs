@@ -1,3 +1,8 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::{JsonError, JsonNumber, JsonValue};
 
 pub fn write_json_value(out: &mut Vec<u8>, value: &JsonValue) -> Result<(), JsonError> {

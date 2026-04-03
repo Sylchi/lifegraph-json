@@ -1,3 +1,8 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::map::Map;
 use crate::number::JsonNumber;
 use crate::parse::Parser;

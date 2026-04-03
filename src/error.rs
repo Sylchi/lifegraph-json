@@ -1,4 +1,4 @@
-use std::fmt;
+use core::fmt;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonError {
@@ -80,11 +80,20 @@ impl fmt::Display for JsonParseError {
                 write!(f, "expected ',' or end of {context} at byte {index}")
             }
             Self::NestingTooDeep { depth, max } => {
-                write!(f, "JSON nesting depth {depth} exceeds maximum {max}")
+                write!(f, "JSON nesting depth {} exceeds maximum {}", depth, max)
             }
         }
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for JsonError {}
+#[cfg(feature = "std")]
 impl std::error::Error for JsonParseError {}
+
+impl JsonError {
+    #[cfg(feature = "std")]
+    pub fn io(_error: std::io::Error) -> Self {
+        Self::Io
+    }
+}
