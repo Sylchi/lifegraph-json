@@ -1,7 +1,10 @@
-#![feature(test)]
+#![cfg_attr(feature = "serde_json_bench", feature(test))]
+#![cfg(feature = "serde_json_bench")]
 extern crate test;
 
 use serde_json::{from_str, to_string, to_vec, JsonValue, Map};
+#[cfg(feature = "serde_json_bench")]
+use serde_json_upstream;
 use test::{black_box, Bencher};
 
 // ============= SERIALIZATION BENCHMARKS =============
