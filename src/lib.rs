@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io::{Read, Write};
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::ops::{Index, IndexMut};
 
 mod error;
+mod map;
 mod number;
 #[cfg(all(feature = "serde", feature = "raw_value"))]
 mod raw;
@@ -16,6 +17,7 @@ mod serde_serialize;
 mod util;
 
 pub use error::{JsonError, JsonParseError};
+pub use map::Map;
 pub use number::JsonNumber;
 
 #[cfg(all(feature = "serde", feature = "raw_value"))]
@@ -37,147 +39,6 @@ pub enum JsonValue {
 
 pub type Value = JsonValue;
 pub type Number = JsonNumber;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Map(Vec<(String, JsonValue)>);
-
-impl Map {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn keys(&self) -> impl ExactSizeIterator<Item = &String> {
-        self.0.iter().map(|(key, _)| key)
-    }
-
-    pub fn values(&self) -> impl ExactSizeIterator<Item = &JsonValue> {
-        self.0.iter().map(|(_, value)| value)
-    }
-
-    pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut JsonValue> {
-        self.0.iter_mut().map(|(_, value)| value)
-    }
-
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &(String, JsonValue)> {
-        self.0.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (String, JsonValue)> {
-        self.0.iter_mut()
-    }
-
-    pub fn get(&self, key: &str) -> Option<&JsonValue> {
-        self.0
-            .iter()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| value)
-    }
-
-    pub fn get_mut(&mut self, key: &str) -> Option<&mut JsonValue> {
-        self.0
-            .iter_mut()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| value)
-    }
-
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.get(key).is_some()
-    }
-
-    pub fn insert(&mut self, key: String, value: JsonValue) -> Option<JsonValue> {
-        if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
-            return Some(std::mem::replace(existing, value));
-        }
-        self.0.push((key, value));
-        None
-    }
-
-    pub fn remove(&mut self, key: &str) -> Option<JsonValue> {
-        self.0
-            .iter()
-            .position(|(candidate, _)| candidate == key)
-            .map(|index| self.0.remove(index).1)
-    }
-
-    pub fn append(&mut self, other: &mut Self) {
-        self.0.append(&mut other.0);
-    }
-
-    pub fn retain<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&String, &mut JsonValue) -> bool,
-    {
-        let mut i = 0;
-        while i < self.0.len() {
-            let keep = {
-                let (key, value) = &mut self.0[i];
-                f(key, value)
-            };
-            if keep {
-                i += 1;
-            } else {
-                self.0.remove(i);
-            }
-        }
-    }
-
-    pub fn swap_remove(&mut self, key: &str) -> Option<JsonValue> {
-        self.0
-            .iter()
-            .position(|(candidate, _)| candidate == key)
-            .map(|index| self.0.swap_remove(index).1)
-    }
-
-    pub fn shift_insert(
-        &mut self,
-        index: usize,
-        key: String,
-        value: JsonValue,
-    ) -> Option<JsonValue> {
-        if let Some((_, existing)) = self.0.iter_mut().find(|(candidate, _)| candidate == &key) {
-            return Some(std::mem::replace(existing, value));
-        }
-        let index = index.min(self.0.len());
-        self.0.insert(index, (key, value));
-        None
-    }
-
-    pub fn sort_keys(&mut self) {
-        self.0.sort_by(|(a, _), (b, _)| a.cmp(b));
-    }
-}
-
-impl Default for Map {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl From<Vec<(String, JsonValue)>> for Map {
-    fn from(value: Vec<(String, JsonValue)>) -> Self {
-        Self(value)
-    }
-}
-
-impl std::iter::FromIterator<(String, JsonValue)> for Map {
-    fn from_iter<T: IntoIterator<Item = (String, JsonValue)>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-impl Deref for Map {
-    type Target = Vec<(String, JsonValue)>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Map {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BorrowedJsonValue<'a> {
@@ -1332,14 +1193,7 @@ fn object_index_or_insert<'a>(value: &'a mut JsonValue, key: &str) -> &'a mut Js
         *value = JsonValue::Object(Map::new());
     }
     match value {
-        JsonValue::Object(entries) => {
-            if let Some(pos) = entries.0.iter().position(|(candidate, _)| candidate == key) {
-                &mut entries.0[pos].1
-            } else {
-                entries.0.push((key.to_owned(), JsonValue::Null));
-                &mut entries.0.last_mut().unwrap().1
-            }
-        }
+        JsonValue::Object(entries) => entries.get_or_insert_null(key),
         JsonValue::Null => unreachable!(),
         JsonValue::Bool(_) => panic!("cannot access key {:?} in JSON boolean", key),
         JsonValue::Number(_) => panic!("cannot access key {:?} in JSON number", key),
