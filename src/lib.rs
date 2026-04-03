@@ -366,7 +366,7 @@ mod tests {
         assert_eq!(n.as_u128(), Some(42));
         assert_eq!(n.to_string(), "42");
 
-        let big = JsonNumber::from_u128(u64::MAX as u128 + 1);
+        let big = JsonNumber::from_u128(u128::from(u64::MAX) + 1);
         assert!(big.is_none());
         assert!(JsonNumber::from_f64(f64::NAN).is_none());
     }
@@ -838,8 +838,8 @@ mod tests {
         fn next_u64(&mut self) -> u64 {
             self.state = self
                 .state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             self.state
         }
 

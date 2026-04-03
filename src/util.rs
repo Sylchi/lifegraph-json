@@ -122,12 +122,12 @@ pub fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
     for (index, byte) in bytes.iter().copied().enumerate().skip(fast_index) {
         let escape = match byte {
             b'"' => Some(br#"\""#.as_slice()),
-            b'\\' => Some(br#"\\"#.as_slice()),
-            0x08 => Some(br#"\b"#.as_slice()),
-            0x0c => Some(br#"\f"#.as_slice()),
-            b'\n' => Some(br#"\n"#.as_slice()),
-            b'\r' => Some(br#"\r"#.as_slice()),
-            b'\t' => Some(br#"\t"#.as_slice()),
+            b'\\' => Some(br"\\".as_slice()),
+            0x08 => Some(br"\b".as_slice()),
+            0x0c => Some(br"\f".as_slice()),
+            b'\n' => Some(br"\n".as_slice()),
+            b'\r' => Some(br"\r".as_slice()),
+            b'\t' => Some(br"\t".as_slice()),
             _ => None,
         };
         if let Some(escape) = escape {
@@ -142,7 +142,7 @@ pub fn write_escaped_json_string(out: &mut Vec<u8>, input: &str) {
             if chunk_start < index {
                 out.extend_from_slice(&bytes[chunk_start..index]);
             }
-            out.extend_from_slice(br#"\u00"#);
+            out.extend_from_slice(br"\u00");
             out.push(hex_digit((byte >> 4) & 0x0f));
             out.push(hex_digit(byte & 0x0f));
             chunk_start = index + 1;
@@ -331,10 +331,10 @@ fn hex_digit(value: u8) -> u8 {
 }
 
 pub fn hash_key(bytes: &[u8]) -> u64 {
-    let mut hash = 1469598103934665603u64;
+    let mut hash = 1_469_598_103_934_665_603u64;
     for &byte in bytes {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(1099511628211u64);
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(1_099_511_628_211u64);
     }
     hash
 }

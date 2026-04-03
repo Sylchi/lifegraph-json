@@ -11,7 +11,7 @@ pub enum BorrowedJsonValue<'a> {
     Object(Vec<(Cow<'a, str>, BorrowedJsonValue<'a>)>),
 }
 
-impl<'a> BorrowedJsonValue<'a> {
+impl BorrowedJsonValue<'_> {
     pub fn into_owned(self) -> JsonValue {
         match self {
             Self::Null => JsonValue::Null,

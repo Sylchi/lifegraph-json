@@ -21,7 +21,7 @@ fn test_unicode_scalar_values() {
     ];
 
     for (ch, description) in test_chars {
-        let json_str = format!("\"{}\"", ch);
+        let json_str = format!("\"{ch}\"");
         let result = parse_json(&json_str);
 
         assert!(
@@ -50,7 +50,7 @@ fn test_surrogate_pairs() {
     ];
 
     for pair in valid_pairs {
-        let json_str = format!("\"{}\"", pair);
+        let json_str = format!("\"{pair}\"");
         let result = parse_json(&json_str);
 
         assert!(
@@ -74,13 +74,9 @@ fn test_surrogate_pairs() {
     ];
 
     for escape in invalid {
-        let json_str = format!("\"{}\"", escape);
+        let json_str = format!("\"{escape}\"");
         let result = parse_json(&json_str);
-        assert!(
-            result.is_err(),
-            "Should reject invalid surrogate: {}",
-            escape
-        );
+        assert!(result.is_err(), "Should reject invalid surrogate: {escape}");
     }
 }
 
@@ -96,7 +92,7 @@ fn test_unicode_escapes() {
     ];
 
     for (escape, expected) in test_cases {
-        let json_str = format!("\"{}\"", escape);
+        let json_str = format!("\"{escape}\"");
         let result = parse_json(&json_str);
 
         assert!(
@@ -126,14 +122,14 @@ fn test_standard_escapes() {
     ];
 
     for (escape, expected) in escapes {
-        let json_str = format!("\"{}\"", escape);
+        let json_str = format!("\"{escape}\"");
         let result = parse_json(&json_str);
 
-        assert!(result.is_ok(), "Failed to parse escape {}", escape);
+        assert!(result.is_ok(), "Failed to parse escape {escape}");
 
         let value = result.unwrap();
         if let JsonValue::String(s) = &value {
-            assert_eq!(s, expected, "Escape mismatch for {}", escape);
+            assert_eq!(s, expected, "Escape mismatch for {escape}");
         }
     }
 }
@@ -147,9 +143,9 @@ fn test_invalid_escapes() {
     ];
 
     for escape in invalid {
-        let json_str = format!("\"{}\"", escape);
+        let json_str = format!("\"{escape}\"");
         let result = parse_json(&json_str);
-        assert!(result.is_err(), "Should reject invalid escape: {}", escape);
+        assert!(result.is_err(), "Should reject invalid escape: {escape}");
     }
 }
 
@@ -159,7 +155,7 @@ fn test_raw_utf8() {
     let test_cases = vec!["Hello", "Café", "日本語", "한국어", "🎉🎊🎈"];
 
     for text in test_cases {
-        let json_str = format!("\"{}\"", text);
+        let json_str = format!("\"{text}\"");
         let result = parse_json(&json_str);
 
         assert!(
@@ -188,9 +184,9 @@ fn test_unicode_roundtrip() {
             lifegraph_json::from_str(&serialized).expect("Failed to deserialize");
 
         if let JsonValue::String(s) = &deserialized {
-            assert_eq!(s, original, "Round-trip failed for {:?}", original);
+            assert_eq!(s, original, "Round-trip failed for {original:?}");
         } else {
-            panic!("Deserialized to non-string: {:?}", deserialized);
+            panic!("Deserialized to non-string: {deserialized:?}");
         }
     }
 }
@@ -207,6 +203,6 @@ fn test_unicode_keys() {
         assert!(map.contains_key("🔑"));
         assert!(map.contains_key("clé"));
     } else {
-        panic!("Expected object, got {:?}", result);
+        panic!("Expected object, got {result:?}");
     }
 }

@@ -21,6 +21,7 @@ pub type Number = JsonNumber;
 impl Eq for JsonValue {}
 
 impl JsonValue {
+    #[must_use]
     pub fn object(entries: Vec<(impl Into<String>, JsonValue)>) -> Self {
         Self::Object(
             entries
@@ -31,6 +32,7 @@ impl JsonValue {
         )
     }
 
+    #[must_use]
     pub fn array(values: Vec<JsonValue>) -> Self {
         Self::Array(values)
     }
@@ -55,34 +57,42 @@ impl JsonValue {
         }
     }
 
+    #[must_use]
     pub fn is_null(&self) -> bool {
         self.as_null().is_some()
     }
 
+    #[must_use]
     pub fn as_null(&self) -> Option<()> {
         matches!(self, Self::Null).then_some(())
     }
 
+    #[must_use]
     pub fn is_boolean(&self) -> bool {
         matches!(self, Self::Bool(_))
     }
 
+    #[must_use]
     pub fn is_number(&self) -> bool {
         matches!(self, Self::Number(_))
     }
 
+    #[must_use]
     pub fn is_string(&self) -> bool {
         matches!(self, Self::String(_))
     }
 
+    #[must_use]
     pub fn is_array(&self) -> bool {
         matches!(self, Self::Array(_))
     }
 
+    #[must_use]
     pub fn is_object(&self) -> bool {
         matches!(self, Self::Object(_))
     }
 
+    #[must_use]
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Self::Bool(value) => Some(*value),
@@ -90,6 +100,7 @@ impl JsonValue {
         }
     }
 
+    #[must_use]
     pub fn as_number(&self) -> Option<&JsonNumber> {
         match self {
             Self::Number(number) => Some(number),
@@ -121,6 +132,7 @@ impl JsonValue {
         self.as_number().and_then(JsonNumber::as_f64)
     }
 
+    #[must_use]
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Self::String(value) => Some(value.as_str()),
@@ -128,6 +140,7 @@ impl JsonValue {
         }
     }
 
+    #[must_use]
     pub fn as_array(&self) -> Option<&Vec<JsonValue>> {
         match self {
             Self::Array(values) => Some(values),
@@ -142,6 +155,7 @@ impl JsonValue {
         }
     }
 
+    #[must_use]
     pub fn as_object(&self) -> Option<&Map> {
         match self {
             Self::Object(entries) => Some(entries),
@@ -170,6 +184,7 @@ impl JsonValue {
         index.index_into_mut(self)
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         match self {
             Self::Array(values) => values.len(),
@@ -178,22 +193,27 @@ impl JsonValue {
         }
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    #[must_use]
     pub fn as_i128(&self) -> Option<i128> {
-        self.as_i64().map(|v| v as i128)
+        self.as_i64().map(i128::from)
     }
 
+    #[must_use]
     pub fn as_u128(&self) -> Option<u128> {
-        self.as_u64().map(|v| v as u128)
+        self.as_u64().map(u128::from)
     }
 
+    #[must_use]
     pub fn as_f32(&self) -> Option<f32> {
         self.as_f64().map(|v| v as f32)
     }
 
+    #[must_use]
     pub fn get_index(&self, index: usize) -> Option<&JsonValue> {
         match self {
             Self::Array(values) => values.get(index),
@@ -212,6 +232,7 @@ impl JsonValue {
         std::mem::replace(self, JsonValue::Null)
     }
 
+    #[must_use]
     pub fn pointer(&self, pointer: &str) -> Option<&JsonValue> {
         if pointer.is_empty() {
             return Some(self);
@@ -303,19 +324,19 @@ impl From<&str> for JsonValue {
 
 impl From<i8> for JsonValue {
     fn from(value: i8) -> Self {
-        Self::Number(JsonNumber::from(value as i64))
+        Self::Number(JsonNumber::from(i64::from(value)))
     }
 }
 
 impl From<i16> for JsonValue {
     fn from(value: i16) -> Self {
-        Self::Number(JsonNumber::from(value as i64))
+        Self::Number(JsonNumber::from(i64::from(value)))
     }
 }
 
 impl From<i32> for JsonValue {
     fn from(value: i32) -> Self {
-        Self::Number(JsonNumber::from(value as i64))
+        Self::Number(JsonNumber::from(i64::from(value)))
     }
 }
 
@@ -333,19 +354,19 @@ impl From<isize> for JsonValue {
 
 impl From<u8> for JsonValue {
     fn from(value: u8) -> Self {
-        Self::Number(JsonNumber::U64(value as u64))
+        Self::Number(JsonNumber::U64(u64::from(value)))
     }
 }
 
 impl From<u16> for JsonValue {
     fn from(value: u16) -> Self {
-        Self::Number(JsonNumber::U64(value as u64))
+        Self::Number(JsonNumber::U64(u64::from(value)))
     }
 }
 
 impl From<u32> for JsonValue {
     fn from(value: u32) -> Self {
-        Self::Number(JsonNumber::U64(value as u64))
+        Self::Number(JsonNumber::U64(u64::from(value)))
     }
 }
 
@@ -363,7 +384,7 @@ impl From<usize> for JsonValue {
 
 impl From<f32> for JsonValue {
     fn from(value: f32) -> Self {
-        Self::Number(JsonNumber::F64(value as f64))
+        Self::Number(JsonNumber::F64(f64::from(value)))
     }
 }
 
@@ -375,17 +396,13 @@ impl From<f64> for JsonValue {
 
 impl From<i128> for JsonValue {
     fn from(value: i128) -> Self {
-        JsonNumber::from_i128(value)
-            .map(Self::Number)
-            .unwrap_or_else(|| Self::String(value.to_string()))
+        JsonNumber::from_i128(value).map_or_else(|| Self::String(value.to_string()), Self::Number)
     }
 }
 
 impl From<u128> for JsonValue {
     fn from(value: u128) -> Self {
-        JsonNumber::from_u128(value)
-            .map(Self::Number)
-            .unwrap_or_else(|| Self::String(value.to_string()))
+        JsonNumber::from_u128(value).map_or_else(|| Self::String(value.to_string()), Self::Number)
     }
 }
 

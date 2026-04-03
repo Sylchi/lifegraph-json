@@ -80,7 +80,7 @@ impl fmt::Display for JsonParseError {
                 write!(f, "expected ',' or end of {context} at byte {index}")
             }
             Self::NestingTooDeep { depth, max } => {
-                write!(f, "JSON nesting depth {} exceeds maximum {}", depth, max)
+                write!(f, "JSON nesting depth {depth} exceeds maximum {max}")
             }
         }
     }
