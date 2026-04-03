@@ -2,7 +2,9 @@
 //!
 //! Run with: cargo test --test unicode -- --nocapture
 
-use lifegraph_json::{parse_json, to_string, JsonValue};
+#[cfg(feature = "serde")]
+use lifegraph_json::to_string;
+use lifegraph_json::{parse_json, JsonValue};
 
 /// Test that all valid Unicode scalar values are handled correctly
 #[test]
