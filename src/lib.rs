@@ -44,6 +44,9 @@ pub use serde_deserialize::JsonValueDeserializer;
 #[cfg(feature = "serde")]
 pub use serde_error::{Category, Error};
 
+#[cfg(feature = "serde")]
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

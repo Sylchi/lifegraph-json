@@ -2,8 +2,8 @@
 extern crate test;
 
 use lifegraph_json::{
-    from_str, parse_json_borrowed, parse_json_tape, to_string, to_vec, CompiledTapeKeys, JsonValue,
-    Map,
+    parse_json, parse_json_borrowed, parse_json_tape, to_string, to_vec, CompiledTapeKeys,
+    JsonValue, Map,
 };
 use test::{black_box, Bencher};
 
@@ -100,7 +100,7 @@ fn bench_serialize_nested_arrays(b: &mut Bencher) {
 fn bench_deserialize_small_object(b: &mut Bencher) {
     let json = r#"{"id":42,"name":"test","active":true}"#;
     b.iter(|| {
-        let _: JsonValue = black_box(from_str(json)).unwrap();
+        let _: JsonValue = black_box(parse_json(json)).unwrap();
     });
 }
 
@@ -122,7 +122,7 @@ fn bench_deserialize_medium_object(b: &mut Bencher) {
         "count": 100
     }"#;
     b.iter(|| {
-        let _: JsonValue = black_box(from_str(json)).unwrap();
+        let _: JsonValue = black_box(parse_json(json)).unwrap();
     });
 }
 
@@ -136,7 +136,7 @@ fn bench_deserialize_array_of_ints(b: &mut Bencher) {
             .join(",")
     );
     b.iter(|| {
-        let _: JsonValue = black_box(from_str(&json)).unwrap();
+        let _: JsonValue = black_box(parse_json(&json)).unwrap();
     });
 }
 
@@ -156,7 +156,7 @@ fn bench_to_vec_small_object(b: &mut Bencher) {
 fn bench_roundtrip_small(b: &mut Bencher) {
     let json = r#"{"id":42,"name":"test","active":true}"#;
     b.iter(|| {
-        let parsed: JsonValue = black_box(from_str(json)).unwrap();
+        let parsed: JsonValue = black_box(parse_json(json)).unwrap();
         black_box(to_string(&parsed)).unwrap();
     });
 }
@@ -179,7 +179,7 @@ fn bench_roundtrip_medium(b: &mut Bencher) {
         "count": 100
     }"#;
     b.iter(|| {
-        let parsed: JsonValue = black_box(from_str(json)).unwrap();
+        let parsed: JsonValue = black_box(parse_json(json)).unwrap();
         black_box(to_string(&parsed)).unwrap();
     });
 }
